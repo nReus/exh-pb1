@@ -148,6 +148,7 @@ export const resetSettings = (stateManager: SourceStateManager): DUIButton => {
         onTap: async () => {
             await Promise.all([
                 stateManager.store('extra_args', null),
+                stateManager.store('displayed_categories', null),
                 stateManager.store('username', null),
                 stateManager.store('password', null),
                 stateManager.store('use_exhentai', null),
