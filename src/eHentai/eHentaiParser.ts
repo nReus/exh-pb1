@@ -15,7 +15,7 @@ import {
 import {
     getDisplayedCategories,
     getExtraArgs,
-    getBaseHost
+    getUseEx
 } from './eHentaiSettings'
 
 export const parseArtist = (tags: string[]): string | undefined => {
@@ -36,10 +36,10 @@ export const parseLanguage = (tags: string[]): string => {
     const languageTags = tags.filter(tag => tag.startsWith('language:') && tag != 'language:translated').map(tag => tag.substring(9))
 
     if (languageTags.length == 0 || languageTags[0] == null) {
-        return "unknown";
+        return 'unknown'
     }
 
-    return languageTags.join(", ")
+    return languageTags.join(', ')
 }
 
 async function getImage(url: string, requestManager: RequestManager, cheerio: CheerioAPI): Promise<string> {
@@ -54,9 +54,9 @@ async function getImage(url: string, requestManager: RequestManager, cheerio: Ch
     return $('#img').attr('src') ?? ''
 }
 
-export async function parsePage(id: string, page: number, requestManager: RequestManager, cheerio: CheerioAPI, baseHost: string): Promise<string[]> {
+export async function parsePage(id: string, page: number, requestManager: RequestManager, cheerio: CheerioAPI, baseUrl: string): Promise<string[]> {
     const request = App.createRequest({
-        url: `https://${baseHost}/g/${id}/?p=${page}`,
+        url: `${baseUrl}/g/${id}/?p=${page}`,
         method: 'GET'
     })
 
@@ -74,8 +74,7 @@ export async function parsePage(id: string, page: number, requestManager: Reques
     return Promise.all(pageArr)
 }
 
-export async function parsePages(mangaId: string, pageCount: string, requestManager: RequestManager, cheerio: CheerioAPI, sourceStateManager: SourceStateManager): Promise<string[]> {
-    const baseHost = await getBaseHost(sourceStateManager)
+export async function parsePages(mangaId: string, pageCount: string, requestManager: RequestManager, cheerio: CheerioAPI, baseUrl: string): Promise<string[]> {
     const splitPageCount: string[] = pageCount.split('-')
 
     if ((splitPageCount[0] ?? '0') == 'Full') {
@@ -88,7 +87,7 @@ export async function parsePages(mangaId: string, pageCount: string, requestMana
         const loopAmt: number = Math.ceil(pages / imagesPerPage) - 1
         const pagesArr = []
         for (let i = 0; i <= loopAmt; i++) {
-            pagesArr.push(parsePage(mangaId, i, requestManager, cheerio, baseHost))
+            pagesArr.push(parsePage(mangaId, i, requestManager, cheerio, baseUrl))
         }
         return Promise.all(pagesArr).then(pages => pages.reduce((prev, cur) => [...prev, ...cur], []))
     } else if ((splitPageCount[0] ?? '0') == 'Pages') {
@@ -96,7 +95,7 @@ export async function parsePages(mangaId: string, pageCount: string, requestMana
             return []
         }
         const websitePageNum: number = parseInt(splitPageCount[1] ?? '0')
-        return parsePage(mangaId, websitePageNum, requestManager, cheerio, baseHost)
+        return parsePage(mangaId, websitePageNum, requestManager, cheerio, baseUrl)
     }
 
     return []
@@ -137,13 +136,13 @@ export const parseTitle = (title: string): string => {
 }
 
 export async function parseHomeSections(cheerio: CheerioAPI, requestManager: RequestManager, sections: HomeSection[], sectionCallback: (section: HomeSection) => void, sourceStateManager: SourceStateManager): Promise<void> {
-    const baseHost = await getBaseHost(sourceStateManager)
-
     for (const section of sections) {
         let $: CheerioStatic | undefined = undefined
+        const useEx = await getUseEx(sourceStateManager)
+        const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
 
         if (section.id == 'popular_recently') {
-            $ = await getCheerioStatic(cheerio, requestManager, `https://${baseHost}/popular`)
+            $ = await getCheerioStatic(cheerio, requestManager, `${base}/popular`)
             if ($ != null) {
                 section.items = parseMenuListPage($, true)
             }
@@ -152,7 +151,7 @@ export async function parseHomeSections(cheerio: CheerioAPI, requestManager: Req
         if (section.id == 'latest_galleries') {
             const displayedCategories: number[] = await getDisplayedCategories(sourceStateManager)
             const excludedCategories: number = displayedCategories.reduce((prev, cur) => prev - cur, 1023)
-            $ = await getCheerioStatic(cheerio, requestManager, `https://${baseHost}/?f_cats=${excludedCategories}&f_search=` + encodeURIComponent(await getExtraArgs(sourceStateManager)))
+            $ = await getCheerioStatic(cheerio, requestManager, `${base}/?f_cats=${excludedCategories}&f_search=${encodeURIComponent(await getExtraArgs(sourceStateManager))}`)
             if ($ != null) {
                 section.items = parseMenuListPage($)
             }
@@ -225,29 +224,26 @@ export interface UrlInfo {
 
 export function parseUrlParams(url: string) : UrlInfo {
     let ret = { id: 0, query: '', category: 0 }
-    let trimmed = url.substring(22)
+    if (!url) return ret
 
-    let splitTrimmed = trimmed.split('&')
-
-    for (const element of splitTrimmed) {
-        let varValue = element.split('=')
-
-        if (varValue[1] == null) {
-            continue
-        }
-
-        if (varValue[0] == 'next') {
-            ret.id = parseInt(varValue[1])
-        }
-
-        if (varValue[0] == 'f_search') {
-            ret.query = varValue[1]
-        }
-
-        if (varValue[0] == 'f_cats') {
-            ret.category = parseInt(varValue[1])
-        }
+    let queryString = ''
+    try {
+        // Support absolute or relative URLs
+        const parsed = new URL(url, 'https://e-hentai.org')
+        queryString = parsed.search.startsWith('?') ? parsed.search.substring(1) : parsed.search
+    } catch {
+        const idx = url.indexOf('?')
+        queryString = idx >= 0 ? url.substring(idx + 1) : ''
     }
+
+    const params = new URLSearchParams(queryString)
+    const next = params.get('next')
+    const fsearch = params.get('f_search')
+    const fcats = params.get('f_cats')
+
+    if (next) ret.id = parseInt(next)
+    if (fsearch) ret.query = fsearch
+    if (fcats) ret.category = parseInt(fcats)
 
     return ret
 }

@@ -8,70 +8,29 @@ import {
     eHentaiCategoriesList
 } from './eHentaiHelper'
 
+// New helpers for ExHentai settings
+export async function getUseEx(stateManager: SourceStateManager): Promise<boolean> {
+    return (await stateManager.retrieve('use_ex') as boolean) ?? false
+}
+
+export async function getIPBMemberId(stateManager: SourceStateManager): Promise<string> {
+    return (await stateManager.retrieve('ipb_member_id') as string) ?? ''
+}
+
+export async function getIPBPassHash(stateManager: SourceStateManager): Promise<string> {
+    return (await stateManager.retrieve('ipb_pass_hash') as string) ?? ''
+}
+
 export async function getExtraArgs(stateManager: SourceStateManager): Promise<string> {
-    try {
-        const stored = await stateManager.retrieve('extra_args')
-        return typeof stored === 'string' ? stored : ''
-    } catch (error) {
-        console.log('Error retrieving extra_args:', error)
-        return ''
-    }
-}
-
-export async function getBaseHost(stateManager: SourceStateManager): Promise<string> {
-    try {
-        const stored = await stateManager.retrieve('base_host')
-        const validHosts = ['e-hentai.org', 'exhentai.org']
-        return typeof stored === 'string' && validHosts.includes(stored) ? stored : 'e-hentai.org'
-    } catch (error) {
-        console.log('Error retrieving base_host:', error)
-        return 'e-hentai.org'
-    }
-}
-
-export async function getIpbMemberId(stateManager: SourceStateManager): Promise<string | null> {
-    try {
-        const stored = await stateManager.retrieve('ipb_member_id')
-        return typeof stored === 'string' ? stored : null
-    } catch (error) {
-        console.log('Error retrieving ipb_member_id:', error)
-        return null
-    }
-}
-
-export async function getIpbPassHash(stateManager: SourceStateManager): Promise<string | null> {
-    try {
-        const stored = await stateManager.retrieve('ipb_pass_hash')
-        return typeof stored === 'string' ? stored : null
-    } catch (error) {
-        console.log('Error retrieving ipb_pass_hash:', error)
-        return null
-    }
+    return (await stateManager.retrieve('extra_args') as string) ?? ''
 }
 
 export async function getDisplayedCategories(stateManager: SourceStateManager): Promise<number[]> {
-    try {
-        const categoriesStr = await getDisplayedCategoriesStr(stateManager)
-        return categoriesStr
-            .map((valueStr) => parseInt(valueStr))
-            .filter((value) => !isNaN(value) && isFinite(value))
-    } catch (error) {
-        console.log('Error getting displayed categories:', error)
-        return eHentaiCategoriesList.getValueList().map(v => parseInt(v)).filter(v => !isNaN(v))
-    }
+    return await (await getDisplayedCategoriesStr(stateManager)).map((valueStr) => parseInt(valueStr))
 }
 
 export async function getDisplayedCategoriesStr(stateManager: SourceStateManager): Promise<string[]> {
-    try {
-        const stored = await stateManager.retrieve('displayed_categories')
-        if (Array.isArray(stored) && stored.length > 0) {
-            return stored
-        }
-        return eHentaiCategoriesList.getValueList()
-    } catch (error) {
-        console.log('Error retrieving displayed_categories:', error)
-        return eHentaiCategoriesList.getValueList()
-    }
+    return await stateManager.retrieve('displayed_categories') ?? eHentaiCategoriesList.getValueList()
 }
 
 export const settings = (stateManager: SourceStateManager): DUINavigationButton => {
@@ -84,65 +43,58 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                     App.createDUISection({
                         id: 'general',
                         header: 'General',
-                        footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
-                        rows: () => {
-                            return Promise.resolve([
-                                App.createDUISelect({
-                                    id: 'base_host',
-                                    label: 'Site',
-                                    options: ['e-hentai.org', 'exhentai.org'],
-                                    labelResolver: (option) => Promise.resolve(option),
+                        footer: 'Affects Latest Galleries and search. Enable ExHentai and provide ipb_member_id + ipb_pass_hash to access Ex.',
+                        rows: async () => {
+                            await Promise.all([
+                                getExtraArgs(stateManager),
+                                getUseEx(stateManager),
+                                getIPBMemberId(stateManager),
+                                getIPBPassHash(stateManager)
+                            ])
+                            return await [
+                                // Toggle ExHentai
+                                App.createDUISwitch({
+                                    id: 'use_ex',
+                                    label: 'Use ExHentai',
                                     value: App.createDUIBinding({
-                                        get: () => getBaseHost(stateManager),
-                                        set: (newValue) => {
-                                            return stateManager.store('base_host', newValue).catch(error => {
-                                                console.log('Error storing base_host:', error)
-                                            })
+                                        get: async () => getUseEx(stateManager),
+                                        set: async (newValue: boolean) => {
+                                            await stateManager.store('use_ex', newValue)
                                         }
-                                    }),
-                                    allowsMultiselect: false
+                                    })
                                 }),
+                                // Cookie inputs for ExHentai
                                 App.createDUIInputField({
                                     id: 'ipb_member_id',
-                                    label: 'IPB Member ID (ExHentai)',
+                                    label: 'ipb_member_id (ExHentai)',
                                     value: App.createDUIBinding({
-                                        get: async () => {
-                                            const value = await getIpbMemberId(stateManager)
-                                            return value ?? ''
-                                        },
-                                        set: (newValue: string) => {
-                                            const valueToStore = newValue.trim() === '' ? null : newValue.trim()
-                                            return stateManager.store('ipb_member_id', valueToStore).catch(error => {
-                                                console.log('Error storing ipb_member_id:', error)
-                                            })
+                                        get: async () => getIPBMemberId(stateManager),
+                                        set: async (newValue: string) => {
+                                            await stateManager.store('ipb_member_id', newValue?.trim() ?? '')
                                         }
                                     })
                                 }),
                                 App.createDUIInputField({
                                     id: 'ipb_pass_hash',
-                                    label: 'IPB Pass Hash (ExHentai)',
+                                    label: 'ipb_pass_hash (ExHentai)',
                                     value: App.createDUIBinding({
-                                        get: async () => {
-                                            const value = await getIpbPassHash(stateManager)
-                                            return value ?? ''
-                                        },
-                                        set: (newValue: string) => {
-                                            const valueToStore = newValue.trim() === '' ? null : newValue.trim()
-                                            return stateManager.store('ipb_pass_hash', valueToStore).catch(error => {
-                                                console.log('Error storing ipb_pass_hash:', error)
-                                            })
+                                        get: async () => getIPBPassHash(stateManager),
+                                        set: async (newValue: string) => {
+                                            await stateManager.store('ipb_pass_hash', newValue?.trim() ?? '')
                                         }
                                     })
                                 }),
+                                // Existing controls
                                 App.createDUIInputField({
                                     id: 'extra_args',
                                     label: 'Additional filter arguments',
                                     value: App.createDUIBinding({
-                                        get: () => getExtraArgs(stateManager),
-                                        set: (newValue: string) => {
-                                            return stateManager.store('extra_args', newValue).catch(error => {
-                                                console.log('Error storing extra_args:', error)
-                                            })
+                                        get: async () => getExtraArgs(stateManager),
+                                        set: async (newValue: string) => {
+                                            await stateManager.store(
+                                                'extra_args',
+                                                newValue
+                                            )
                                         }
                                     })
                                 }),
@@ -150,19 +102,19 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                                     id: 'displayed_categories',
                                     label: 'Displayed Categories',
                                     options: eHentaiCategoriesList.getValueList(),
-                                    labelResolver: (option) => Promise.resolve(eHentaiCategoriesList.getName(option)),
+                                    labelResolver: async (option) => eHentaiCategoriesList.getName(option),
                                     value: App.createDUIBinding({
-                                        get: () => getDisplayedCategoriesStr(stateManager),
-                                        set: (newValue) => {
-                                            const validatedValue = Array.isArray(newValue) ? newValue : []
-                                            return stateManager.store('displayed_categories', validatedValue).catch(error => {
-                                                console.log('Error storing displayed_categories:', error)
-                                            })
+                                        get: async () => getDisplayedCategoriesStr(stateManager),
+                                        set: async (newValue) => {
+                                            await stateManager.store(
+                                                'displayed_categories',
+                                                newValue
+                                            )
                                         }
                                     }),
                                     allowsMultiselect: true
                                 })
-                            ])
+                            ]
                         },
                         isHidden: false
                     })
@@ -177,17 +129,12 @@ export const resetSettings = (stateManager: SourceStateManager): DUIButton => {
         id: 'reset',
         label: 'Reset Settings',
         onTap: async () => {
-            try {
-                await Promise.all([
-                    stateManager.store('extra_args', ''),
-                    stateManager.store('displayed_categories', eHentaiCategoriesList.getValueList()),
-                    stateManager.store('base_host', 'e-hentai.org'),
-                    stateManager.store('ipb_member_id', null),
-                    stateManager.store('ipb_pass_hash', null)
-                ])
-            } catch (error) {
-                console.log('Error resetting settings:', error)
-            }
+            await Promise.all([
+                stateManager.store('extra_args', null),
+                stateManager.store('use_ex', null),
+                stateManager.store('ipb_member_id', null),
+                stateManager.store('ipb_pass_hash', null)
+            ])
         }
     })
 }
