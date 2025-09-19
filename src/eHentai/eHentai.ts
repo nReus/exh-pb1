@@ -53,7 +53,7 @@ export const getExportVersion = (EXTENSION_VERSION: string): string => {
 }
 
 export const eHentaiInfo: SourceInfo = {
-    version: getExportVersion('0.0.11'),
+    version: getExportVersion('0.0.12'),
     name: 'e-hentai',
     icon: 'icon.png',
     author: 'kameia, loik, nReus',
@@ -83,6 +83,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
             interceptRequest: async (request: Request): Promise<Request> => {
                 const useEx = await getUseEx(this.stateManager)
                 const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
+                const host = useEx ? 'exhentai.org' : 'e-hentai.org'
                 const cookies = []
 
                 // Always set UA and referer to selected base
@@ -94,16 +95,16 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
                     }
                 }
 
-                // For gallery pages, NW cookie gives simplified viewer (ok to send for both)
-                cookies.push(App.createCookie({ name: 'nw', value: '1', domain: `${base}/` }))
+                // Simplified viewer cookie
+                cookies.push(App.createCookie({ name: 'nw', value: '1', domain: host }))
 
                 // If ExHentai is enabled, attach IPB cookies
                 if (useEx) {
                     const memberId = await getIPBMemberId(this.stateManager)
                     const passHash = await getIPBPassHash(this.stateManager)
                     if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
-                        cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: `${base}/` }))
-                        cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: `${base}/` }))
+                        cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: host }))
+                        cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: host }))
                     }
                 }
 
