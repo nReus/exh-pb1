@@ -14,7 +14,8 @@ import {
 
 import {
     getDisplayedCategories,
-    getExtraArgs
+    getExtraArgs,
+    getBaseHost
 } from './eHentaiSettings'
 
 export const parseArtist = (tags: string[]): string | undefined => {
@@ -53,9 +54,9 @@ async function getImage(url: string, requestManager: RequestManager, cheerio: Ch
     return $('#img').attr('src') ?? ''
 }
 
-export async function parsePage(id: string, page: number, requestManager: RequestManager, cheerio: CheerioAPI, baseURL: string): Promise<string[]> {
+export async function parsePage(id: string, page: number, requestManager: RequestManager, cheerio: CheerioAPI, baseHost: string): Promise<string[]> {
     const request = App.createRequest({
-        url: `${baseURL}/g/${id}/?p=${page}`,
+        url: `https://${baseHost}/g/${id}/?p=${page}`,
         method: 'GET'
     })
 
@@ -73,7 +74,8 @@ export async function parsePage(id: string, page: number, requestManager: Reques
     return Promise.all(pageArr)
 }
 
-export async function parsePages(mangaId: string, pageCount: string, requestManager: RequestManager, cheerio: CheerioAPI, baseURL: string): Promise<string[]> {
+export async function parsePages(mangaId: string, pageCount: string, requestManager: RequestManager, cheerio: CheerioAPI, sourceStateManager: SourceStateManager): Promise<string[]> {
+    const baseHost = await getBaseHost(sourceStateManager)
     const splitPageCount: string[] = pageCount.split('-')
 
     if ((splitPageCount[0] ?? '0') == 'Full') {
@@ -86,7 +88,7 @@ export async function parsePages(mangaId: string, pageCount: string, requestMana
         const loopAmt: number = Math.ceil(pages / imagesPerPage) - 1
         const pagesArr = []
         for (let i = 0; i <= loopAmt; i++) {
-            pagesArr.push(parsePage(mangaId, i, requestManager, cheerio, baseURL))
+            pagesArr.push(parsePage(mangaId, i, requestManager, cheerio, baseHost))
         }
         return Promise.all(pagesArr).then(pages => pages.reduce((prev, cur) => [...prev, ...cur], []))
     } else if ((splitPageCount[0] ?? '0') == 'Pages') {
@@ -94,7 +96,7 @@ export async function parsePages(mangaId: string, pageCount: string, requestMana
             return []
         }
         const websitePageNum: number = parseInt(splitPageCount[1] ?? '0')
-        return parsePage(mangaId, websitePageNum, requestManager, cheerio, baseURL)
+        return parsePage(mangaId, websitePageNum, requestManager, cheerio, baseHost)
     }
 
     return []
@@ -134,12 +136,14 @@ export const parseTitle = (title: string): string => {
     return title.replaceAll(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
 }
 
-export async function parseHomeSections(cheerio: CheerioAPI, requestManager: RequestManager, sections: HomeSection[], sectionCallback: (section: HomeSection) => void, sourceStateManager: SourceStateManager, baseURL: string): Promise<void> {
+export async function parseHomeSections(cheerio: CheerioAPI, requestManager: RequestManager, sections: HomeSection[], sectionCallback: (section: HomeSection) => void, sourceStateManager: SourceStateManager): Promise<void> {
+    const baseHost = await getBaseHost(sourceStateManager)
+
     for (const section of sections) {
         let $: CheerioStatic | undefined = undefined
 
         if (section.id == 'popular_recently') {
-            $ = await getCheerioStatic(cheerio, requestManager, `${baseURL}/popular`)
+            $ = await getCheerioStatic(cheerio, requestManager, `https://${baseHost}/popular`)
             if ($ != null) {
                 section.items = parseMenuListPage($, true)
             }
@@ -148,7 +152,7 @@ export async function parseHomeSections(cheerio: CheerioAPI, requestManager: Req
         if (section.id == 'latest_galleries') {
             const displayedCategories: number[] = await getDisplayedCategories(sourceStateManager)
             const excludedCategories: number = displayedCategories.reduce((prev, cur) => prev - cur, 1023)
-            $ = await getCheerioStatic(cheerio, requestManager, `${baseURL}/?f_cats=${excludedCategories}&f_search=${encodeURIComponent(await getExtraArgs(sourceStateManager))}`)
+            $ = await getCheerioStatic(cheerio, requestManager, `https://${baseHost}/?f_cats=${excludedCategories}&f_search=` + encodeURIComponent(await getExtraArgs(sourceStateManager)))
             if ($ != null) {
                 section.items = parseMenuListPage($)
             }

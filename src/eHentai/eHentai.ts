@@ -18,6 +18,7 @@ import {
     SearchResultsProviding,
     SourceInfo,
     SourceManga,
+    SourceStateManager,
     TagSection,
     SourceIntents
 } from '@paperback/types'
@@ -42,8 +43,10 @@ import {
     getDisplayedCategories,
     settings,
     resetSettings,
-    isExHentaiEnabled,
-    getExHentaiCookies
+    getExtraArgs,
+    getBaseHost,
+    getIpbMemberId,
+    getIpbPassHash
 } from './eHentaiSettings'
 
 const PAPERBACK_VERSION = '0.8.0'
@@ -51,55 +54,68 @@ export const getExportVersion = (EXTENSION_VERSION: string): string => {
     return PAPERBACK_VERSION.split('.').map((x, index) => Number(x) + Number(EXTENSION_VERSION.split('.')[index])).join('.')
 }
 
+export const eHentaiInfo: SourceInfo = {
+    version: getExportVersion('0.0.10'),
+    name: 'e-hentai',
+    icon: 'icon.png',
+    author: 'kameia, loik',
+    description: 'Extension to grab galleries from E-Hentai',
+    contentRating: ContentRating.ADULT,
+    websiteBaseURL: 'https://e-hentai.org',
+    authorWebsite: 'https://github.com/kameiaa',
+    sourceTags: [{
+        text: '18+',
+        type: BadgeColor.YELLOW
+    }],
+    intents: SourceIntents.HOMEPAGE_SECTIONS | SourceIntents.MANGA_CHAPTERS | SourceIntents.SETTINGS_UI | SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
+}
+
 export class eHentai implements SearchResultsProviding, MangaProviding, ChapterProviding, HomePageSectionsProviding {
 
-    private baseURL: string;
-    private isExHentai: boolean;
-
     constructor(public cheerio: CheerioAPI) {
-        // Initialize baseURL and isExHentai; these will be set asynchronously later if needed
-        this.baseURL = 'https://e-hentai.org';
-        this.isExHentai = false;
+        this.stateManager = App.createSourceStateManager()
+        this.requestManager = App.createRequestManager({
+            requestsPerSecond: 3,
+            requestTimeout: 15000,
+            interceptor: {
+                interceptRequest: async (request: Request): Promise<Request> => {
+                    const baseHost = await getBaseHost(this.stateManager)
+                    request.headers = {
+                        ...(request.headers ?? {}),
+                        ...{
+                            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 12_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15',
+                            'referer': `https://${baseHost}/`
+                        }
+                    }
+
+                    const cookies = [
+                        App.createCookie({ name: 'nw', value: '1', domain: baseHost })
+                    ]
+
+                    if (baseHost === 'exhentai.org') {
+                        const mem = await getIpbMemberId(this.stateManager)
+                        const pass = await getIpbPassHash(this.stateManager)
+                        if (mem) cookies.push(App.createCookie({ name: 'ipb_member_id', value: mem, domain: baseHost }))
+                        if (pass) cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: pass, domain: baseHost }))
+                    }
+
+                    request.cookies = cookies
+                    return request
+                },
+
+                interceptResponse: async (response: Response): Promise<Response> => {
+                    return response
+                }
+            }
+        })
     }
 
-    readonly requestManager: RequestManager = App.createRequestManager({
-        requestsPerSecond: 3,
-        requestTimeout: 15000,
-        interceptor: {
-            interceptRequest: async (request: Request): Promise<Request> => {
-                request.headers = {
-                    ...(request.headers ?? {}),
-                    ...{
-                        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 12_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15',
-                        'referer': this.baseURL + '/'
-                    }
-                };
-                request.cookies = [App.createCookie({ name: 'nw', value: '1', domain: this.baseURL })];
+    readonly requestManager: RequestManager
 
-                // Add ExHentai cookies if enabled
-                if (this.isExHentai) {
-                    const cookies = await getExHentaiCookies(this.stateManager);
-                    if (cookies.memberId && cookies.passHash) {
-                        request.cookies.push(
-                            App.createCookie({ name: 'ipb_member_id', value: cookies.memberId, domain: this.baseURL }),
-                            App.createCookie({ name: 'ipb_pass_hash', value: cookies.passHash, domain: this.baseURL })
-                        );
-                    }
-                }
-                return request;
-            },
+    stateManager: SourceStateManager
 
-            interceptResponse: async (response: Response): Promise<Response> => {
-                return response;
-            }
-        }
-    });
-
-    stateManager = App.createSourceStateManager();
-
-    // Update to use dynamic baseURL
     getMangaShareUrl(mangaId: string): string {
-        return `${this.baseURL}/g/${mangaId}`;
+        return `https://e-hentai.org/g/${mangaId}`
     }
 
     async getSearchTags(): Promise<TagSection[]> {
@@ -126,22 +142,14 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
     }
 
     async getHomePageSections(sectionCallback: (section: HomeSection) => void): Promise<void> {
-        // Set baseURL and isExHentai based on settings
-        this.isExHentai = await isExHentaiEnabled(this.stateManager);
-        this.baseURL = this.isExHentai ? 'https://exhentai.org' : 'https://e-hentai.org';
+        const section_popular_recently = App.createHomeSection({ id: 'popular_recently', title: 'Popular Recently', type: HomeSectionType.singleRowNormal, containsMoreItems: false })
+        const section_latest_galleries = App.createHomeSection({ id: 'latest_galleries', title: 'Latest Galleries', type: HomeSectionType.singleRowNormal, containsMoreItems: true })
+        const sections: HomeSection[] = [section_popular_recently, section_latest_galleries]
 
-        const section_popular_recently = App.createHomeSection({ id: 'popular_recently', title: 'Popular Recently', type: HomeSectionType.singleRowNormal, containsMoreItems: false });
-        const section_latest_galleries = App.createHomeSection({ id: 'latest_galleries', title: 'Latest Galleries', type: HomeSectionType.singleRowNormal, containsMoreItems: true });
-        const sections: HomeSection[] = [section_popular_recently, section_latest_galleries];
-
-        await parseHomeSections(this.cheerio, this.requestManager, sections, sectionCallback, this.stateManager, this.baseURL);
+        await parseHomeSections(this.cheerio, this.requestManager, sections, sectionCallback, this.stateManager)
     }
 
     async getViewMoreItems(homepageSectionId: string, metadata: any): Promise<PagedResults> {
-        // Ensure baseURL is set
-        this.isExHentai = await isExHentaiEnabled(this.stateManager);
-        this.baseURL = this.isExHentai ? 'https://exhentai.org' : 'https://e-hentai.org';
-
         const page = metadata?.page ?? 0
         let stopSearch = metadata?.stopSearch ?? false
         if(stopSearch) return App.createPagedResults({
@@ -154,7 +162,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
         let nextPageId = { id: 0 }
         const displayedCategories: number[] = await getDisplayedCategories(this.stateManager)
         const excludedCategories: number = displayedCategories.reduce((prev, cur) => prev - cur, 1023)
-        const results = await getSearchData('', page, excludedCategories, this.requestManager, this.cheerio, nextPageId, this.stateManager, this.baseURL)
+        const results = await getSearchData('', page, excludedCategories, this.requestManager, this.cheerio, nextPageId, this.stateManager)
         if (results[results.length - 1]?.mangaId == 'stopSearch') {
             results.pop()
             stopSearch = true
@@ -187,10 +195,6 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
     }
 
     async getChapters(mangaId: string): Promise<Chapter[]> {
-        // Ensure baseURL is set
-        this.isExHentai = await isExHentaiEnabled(this.stateManager);
-        this.baseURL = this.isExHentai ? 'https://exhentai.org' : 'https://e-hentai.org';
-
         // For getting gallery metadata
         let data = (await getGalleryData([mangaId], this.requestManager))[0]
         const chapters: Chapter[] = []
@@ -198,7 +202,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
         // Load page to get how much images there are per page
         // Get the "Showing 1 - 20 of 42 images" text from the html
         let $: CheerioStatic
-        $ = await getCheerioStatic(this.cheerio, this.requestManager, `${this.baseURL}/g/${mangaId}`);
+        $ = await getCheerioStatic(this.cheerio, this.requestManager, 'https://e-hentai.org/g/' + mangaId)
         const showing_text = $('p.gpc').text();
         // https://regexr.com
         const regexParse = /(\d[\d, ]*) - (\d[\d, ]*) of (\d[\d, ]*)/;
@@ -248,22 +252,14 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
     }
 
     async getChapterDetails(mangaId: string, chapterId: string): Promise<ChapterDetails> {
-        // Ensure baseURL is set
-        this.isExHentai = await isExHentaiEnabled(this.stateManager);
-        this.baseURL = this.isExHentai ? 'https://exhentai.org' : 'https://e-hentai.org';
-
         return App.createChapterDetails({
             mangaId: mangaId,
             id: chapterId,
-            pages: await parsePages(mangaId, chapterId, this.requestManager, this.cheerio, this.baseURL)
+            pages: await parsePages(mangaId, chapterId, this.requestManager, this.cheerio, this.stateManager)
         })
     }
 
     async getSearchResults(query: SearchRequest, metadata: any): Promise<PagedResults> {
-        // Ensure baseURL is set
-        this.isExHentai = await isExHentaiEnabled(this.stateManager);
-        this.baseURL = this.isExHentai ? 'https://exhentai.org' : 'https://e-hentai.org';
-
         const page = metadata?.page ?? 0
         let stopSearch = metadata?.stopSearch ?? false
         if (stopSearch) {
@@ -315,7 +311,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
         }
 
         let nextPageId = { id: 0 }
-        const results = await getSearchData(query.title, page, categories, this.requestManager, this.cheerio, nextPageId, this.stateManager, this.baseURL)
+        const results = await getSearchData(query.title, page, categories, this.requestManager, this.cheerio, nextPageId, this.stateManager)
         if (results[results.length - 1]?.mangaId == 'stopSearch') {
             results.pop()
             stopSearch = true
@@ -343,27 +339,10 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
     }
 
     async getCloudflareBypassRequestAsync(): Promise<Request> {
+        const baseHost = await getBaseHost(this.stateManager)
         return App.createRequest({
-            url: this.baseURL + '/',
+            url: `https://${baseHost}/`,
             method: 'GET'
-        });
+        })
     }
 }
-
-// Update SourceInfo to be dynamic (if possible) or handle in class
-// Note: SourceInfo is static, so the name/icon may not change; handle internally.
-export const eHentaiInfo: SourceInfo = {
-    version: getExportVersion('0.0.10'),
-    name: 'e-hentai / exhentai',  // Updated name to reflect both
-    icon: 'icon.png',
-    author: 'kameia, loik',
-    description: 'Extension to grab galleries from E-Hentai or ExHentai',
-    contentRating: ContentRating.ADULT,
-    websiteBaseURL: 'https://e-hentai.org',  // Default; overridden in class
-    authorWebsite: 'https://github.com/kameiaa',
-    sourceTags: [{
-        text: '18+',
-        type: BadgeColor.YELLOW
-    }],
-    intents: SourceIntents.HOMEPAGE_SECTIONS | SourceIntents.MANGA_CHAPTERS | SourceIntents.SETTINGS_UI | SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
-};
