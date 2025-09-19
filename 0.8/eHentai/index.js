@@ -2059,39 +2059,75 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.resetSettings = exports.settings = exports.getDisplayedCategoriesStr = exports.getDisplayedCategories = exports.getIpbPassHash = exports.getIpbMemberId = exports.getBaseHost = exports.getExtraArgs = void 0;
 const eHentaiHelper_1 = require("./eHentaiHelper");
 async function getExtraArgs(stateManager) {
-    const stored = await stateManager.retrieve('extra_args');
-    return typeof stored === 'string' ? stored : '';
+    try {
+        const stored = await stateManager.retrieve('extra_args');
+        return typeof stored === 'string' ? stored : '';
+    }
+    catch (error) {
+        console.log('Error retrieving extra_args:', error);
+        return '';
+    }
 }
 exports.getExtraArgs = getExtraArgs;
 async function getBaseHost(stateManager) {
-    const stored = await stateManager.retrieve('base_host');
-    const validHosts = ['e-hentai.org', 'exhentai.org'];
-    return typeof stored === 'string' && validHosts.includes(stored) ? stored : 'e-hentai.org';
+    try {
+        const stored = await stateManager.retrieve('base_host');
+        const validHosts = ['e-hentai.org', 'exhentai.org'];
+        return typeof stored === 'string' && validHosts.includes(stored) ? stored : 'e-hentai.org';
+    }
+    catch (error) {
+        console.log('Error retrieving base_host:', error);
+        return 'e-hentai.org';
+    }
 }
 exports.getBaseHost = getBaseHost;
 async function getIpbMemberId(stateManager) {
-    const stored = await stateManager.retrieve('ipb_member_id');
-    return typeof stored === 'string' ? stored : null;
+    try {
+        const stored = await stateManager.retrieve('ipb_member_id');
+        return typeof stored === 'string' ? stored : null;
+    }
+    catch (error) {
+        console.log('Error retrieving ipb_member_id:', error);
+        return null;
+    }
 }
 exports.getIpbMemberId = getIpbMemberId;
 async function getIpbPassHash(stateManager) {
-    const stored = await stateManager.retrieve('ipb_pass_hash');
-    return typeof stored === 'string' ? stored : null;
+    try {
+        const stored = await stateManager.retrieve('ipb_pass_hash');
+        return typeof stored === 'string' ? stored : null;
+    }
+    catch (error) {
+        console.log('Error retrieving ipb_pass_hash:', error);
+        return null;
+    }
 }
 exports.getIpbPassHash = getIpbPassHash;
 async function getDisplayedCategories(stateManager) {
-    const categoriesStr = await getDisplayedCategoriesStr(stateManager);
-    return categoriesStr
-        .map((valueStr) => parseInt(valueStr))
-        .filter((value) => !isNaN(value) && isFinite(value));
+    try {
+        const categoriesStr = await getDisplayedCategoriesStr(stateManager);
+        return categoriesStr
+            .map((valueStr) => parseInt(valueStr))
+            .filter((value) => !isNaN(value) && isFinite(value));
+    }
+    catch (error) {
+        console.log('Error getting displayed categories:', error);
+        return eHentaiHelper_1.eHentaiCategoriesList.getValueList().map(v => parseInt(v)).filter(v => !isNaN(v));
+    }
 }
 exports.getDisplayedCategories = getDisplayedCategories;
 async function getDisplayedCategoriesStr(stateManager) {
-    const stored = await stateManager.retrieve('displayed_categories');
-    if (Array.isArray(stored)) {
-        return stored;
+    try {
+        const stored = await stateManager.retrieve('displayed_categories');
+        if (Array.isArray(stored) && stored.length > 0) {
+            return stored;
+        }
+        return eHentaiHelper_1.eHentaiCategoriesList.getValueList();
     }
-    return eHentaiHelper_1.eHentaiCategoriesList.getValueList();
+    catch (error) {
+        console.log('Error retrieving displayed_categories:', error);
+        return eHentaiHelper_1.eHentaiCategoriesList.getValueList();
+    }
 }
 exports.getDisplayedCategoriesStr = getDisplayedCategoriesStr;
 const settings = (stateManager) => {
@@ -2105,17 +2141,19 @@ const settings = (stateManager) => {
                         id: 'general',
                         header: 'General',
                         footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
-                        rows: async () => {
-                            return await [
+                        rows: () => {
+                            return Promise.resolve([
                                 App.createDUISelect({
                                     id: 'base_host',
                                     label: 'Site',
                                     options: ['e-hentai.org', 'exhentai.org'],
-                                    labelResolver: async (option) => option,
+                                    labelResolver: (option) => Promise.resolve(option),
                                     value: App.createDUIBinding({
-                                        get: async () => getBaseHost(stateManager),
-                                        set: async (newValue) => {
-                                            await stateManager.store('base_host', newValue);
+                                        get: () => getBaseHost(stateManager),
+                                        set: (newValue) => {
+                                            return stateManager.store('base_host', newValue).catch(error => {
+                                                console.log('Error storing base_host:', error);
+                                            });
                                         }
                                     }),
                                     allowsMultiselect: false
@@ -2124,9 +2162,15 @@ const settings = (stateManager) => {
                                     id: 'ipb_member_id',
                                     label: 'IPB Member ID (ExHentai)',
                                     value: App.createDUIBinding({
-                                        get: async () => (await getIpbMemberId(stateManager)) ?? '',
-                                        set: async (newValue) => {
-                                            await stateManager.store('ipb_member_id', newValue);
+                                        get: async () => {
+                                            const value = await getIpbMemberId(stateManager);
+                                            return value ?? '';
+                                        },
+                                        set: (newValue) => {
+                                            const valueToStore = newValue.trim() === '' ? null : newValue.trim();
+                                            return stateManager.store('ipb_member_id', valueToStore).catch(error => {
+                                                console.log('Error storing ipb_member_id:', error);
+                                            });
                                         }
                                     })
                                 }),
@@ -2134,9 +2178,15 @@ const settings = (stateManager) => {
                                     id: 'ipb_pass_hash',
                                     label: 'IPB Pass Hash (ExHentai)',
                                     value: App.createDUIBinding({
-                                        get: async () => (await getIpbPassHash(stateManager)) ?? '',
-                                        set: async (newValue) => {
-                                            await stateManager.store('ipb_pass_hash', newValue);
+                                        get: async () => {
+                                            const value = await getIpbPassHash(stateManager);
+                                            return value ?? '';
+                                        },
+                                        set: (newValue) => {
+                                            const valueToStore = newValue.trim() === '' ? null : newValue.trim();
+                                            return stateManager.store('ipb_pass_hash', valueToStore).catch(error => {
+                                                console.log('Error storing ipb_pass_hash:', error);
+                                            });
                                         }
                                     })
                                 }),
@@ -2144,9 +2194,11 @@ const settings = (stateManager) => {
                                     id: 'extra_args',
                                     label: 'Additional filter arguments',
                                     value: App.createDUIBinding({
-                                        get: async () => getExtraArgs(stateManager),
-                                        set: async (newValue) => {
-                                            await stateManager.store('extra_args', newValue);
+                                        get: () => getExtraArgs(stateManager),
+                                        set: (newValue) => {
+                                            return stateManager.store('extra_args', newValue).catch(error => {
+                                                console.log('Error storing extra_args:', error);
+                                            });
                                         }
                                     })
                                 }),
@@ -2154,16 +2206,19 @@ const settings = (stateManager) => {
                                     id: 'displayed_categories',
                                     label: 'Displayed Categories',
                                     options: eHentaiHelper_1.eHentaiCategoriesList.getValueList(),
-                                    labelResolver: async (option) => eHentaiHelper_1.eHentaiCategoriesList.getName(option),
+                                    labelResolver: (option) => Promise.resolve(eHentaiHelper_1.eHentaiCategoriesList.getName(option)),
                                     value: App.createDUIBinding({
-                                        get: async () => getDisplayedCategoriesStr(stateManager),
-                                        set: async (newValue) => {
-                                            await stateManager.store('displayed_categories', newValue);
+                                        get: () => getDisplayedCategoriesStr(stateManager),
+                                        set: (newValue) => {
+                                            const validatedValue = Array.isArray(newValue) ? newValue : [];
+                                            return stateManager.store('displayed_categories', validatedValue).catch(error => {
+                                                console.log('Error storing displayed_categories:', error);
+                                            });
                                         }
                                     }),
                                     allowsMultiselect: true
                                 })
-                            ];
+                            ]);
                         },
                         isHidden: false
                     })
@@ -2178,13 +2233,18 @@ const resetSettings = (stateManager) => {
         id: 'reset',
         label: 'Reset Settings',
         onTap: async () => {
-            await Promise.all([
-                stateManager.store('extra_args', null),
-                stateManager.store('displayed_categories', null),
-                stateManager.store('base_host', null),
-                stateManager.store('ipb_member_id', null),
-                stateManager.store('ipb_pass_hash', null)
-            ]);
+            try {
+                await Promise.all([
+                    stateManager.store('extra_args', ''),
+                    stateManager.store('displayed_categories', eHentaiHelper_1.eHentaiCategoriesList.getValueList()),
+                    stateManager.store('base_host', 'e-hentai.org'),
+                    stateManager.store('ipb_member_id', null),
+                    stateManager.store('ipb_pass_hash', null)
+                ]);
+            }
+            catch (error) {
+                console.log('Error resetting settings:', error);
+            }
         }
     });
 };
