@@ -1468,7 +1468,7 @@ class eHentai {
             requestTimeout: 15000,
             interceptor: {
                 interceptRequest: async (request) => {
-                    const useEx = await (0, eHentaiSettings_1.getUseExEnabled)(this.stateManager);
+                    const useEx = await (0, eHentaiSettings_1.getUseEx)(this.stateManager);
                     const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
                     const cookies = [];
                     // Always set UA and referer to selected base
@@ -1501,7 +1501,7 @@ class eHentai {
         this.stateManager = App.createSourceStateManager();
     }
     async getBaseUrl() {
-        return (await (0, eHentaiSettings_1.getUseExEnabled)(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org';
+        return (await (0, eHentaiSettings_1.getUseEx)(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org';
     }
     getMangaShareUrl(mangaId) {
         // Share URL kept on e-hentai.org to avoid async here
@@ -1738,9 +1738,8 @@ async function getGalleryData(ids, requestManager) {
 exports.getGalleryData = getGalleryData;
 async function getSearchData(query, page, categories, requestManager, cheerio, nextPageId, sourceStateManager) {
     let finalQuery = (query ?? '') + ' ' + await (0, eHentaiSettings_1.getExtraArgs)(sourceStateManager);
-    // Only use exhentai.org when the toggle is enabled AND both IPB cookies are present
-    const useExEnabled = await (0, eHentaiSettings_1.getUseExEnabled)(sourceStateManager);
-    const base = useExEnabled ? 'https://exhentai.org' : 'https://e-hentai.org';
+    const useEx = await (0, eHentaiSettings_1.getUseEx)(sourceStateManager);
+    const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
     const request = App.createRequest({
         url: `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,
         method: 'GET'
@@ -1969,8 +1968,8 @@ exports.parseTitle = parseTitle;
 async function parseHomeSections(cheerio, requestManager, sections, sectionCallback, sourceStateManager) {
     for (const section of sections) {
         let $ = undefined;
-        const useExEnabled = await (0, eHentaiSettings_1.getUseExEnabled)(sourceStateManager);
-        const base = useExEnabled ? 'https://exhentai.org' : 'https://e-hentai.org';
+        const useEx = await (0, eHentaiSettings_1.getUseEx)(sourceStateManager);
+        const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
         if (section.id == 'popular_recently') {
             $ = await getCheerioStatic(cheerio, requestManager, `${base}/popular`);
             if ($ != null) {
@@ -2092,23 +2091,13 @@ exports.parseUrlParams = parseUrlParams;
 },{"./eHentaiHelper":71,"./eHentaiSettings":73,"entities":69}],73:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetSettings = exports.settings = exports.getDisplayedCategoriesStr = exports.getDisplayedCategories = exports.getExtraArgs = exports.getIPBPassHash = exports.getIPBMemberId = exports.getUseExEnabled = exports.getUseEx = void 0;
+exports.resetSettings = exports.settings = exports.getDisplayedCategoriesStr = exports.getDisplayedCategories = exports.getExtraArgs = exports.getIPBPassHash = exports.getIPBMemberId = exports.getUseEx = void 0;
 const eHentaiHelper_1 = require("./eHentaiHelper");
 // New helpers for ExHentai settings
 async function getUseEx(stateManager) {
     return await stateManager.retrieve('use_ex') ?? false;
 }
 exports.getUseEx = getUseEx;
-// Returns true only when the toggle is enabled AND both IPB cookies are present
-async function getUseExEnabled(stateManager) {
-    const useEx = await getUseEx(stateManager);
-    if (!useEx)
-        return false;
-    const member = await getIPBMemberId(stateManager);
-    const pass = await getIPBPassHash(stateManager);
-    return (member?.length ?? 0) > 0 && (pass?.length ?? 0) > 0;
-}
-exports.getUseExEnabled = getUseExEnabled;
 async function getIPBMemberId(stateManager) {
     return await stateManager.retrieve('ipb_member_id') ?? '';
 }
