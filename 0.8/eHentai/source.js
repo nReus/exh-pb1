@@ -1446,7 +1446,7 @@ const getExportVersion = (EXTENSION_VERSION) => {
 };
 exports.getExportVersion = getExportVersion;
 exports.eHentaiInfo = {
-    version: (0, exports.getExportVersion)('0.0.11'),
+    version: (0, exports.getExportVersion)('0.0.12'),
     name: 'e-hentai',
     icon: 'icon.png',
     author: 'kameia, loik, nReus',
@@ -1470,6 +1470,7 @@ class eHentai {
                 interceptRequest: async (request) => {
                     const useEx = await (0, eHentaiSettings_1.getUseEx)(this.stateManager);
                     const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
+                    const host = useEx ? 'exhentai.org' : 'e-hentai.org';
                     const cookies = [];
                     // Always set UA and referer to selected base
                     request.headers = {
@@ -1479,15 +1480,15 @@ class eHentai {
                             'referer': `${base}/`
                         }
                     };
-                    // For gallery pages, NW cookie gives simplified viewer (ok to send for both)
-                    cookies.push(App.createCookie({ name: 'nw', value: '1', domain: `${base}/` }));
+                    // Simplified viewer cookie
+                    cookies.push(App.createCookie({ name: 'nw', value: '1', domain: host }));
                     // If ExHentai is enabled, attach IPB cookies
                     if (useEx) {
                         const memberId = await (0, eHentaiSettings_1.getIPBMemberId)(this.stateManager);
                         const passHash = await (0, eHentaiSettings_1.getIPBPassHash)(this.stateManager);
                         if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
-                            cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: `${base}/` }));
-                            cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: `${base}/` }));
+                            cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: host }));
+                            cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: host }));
                         }
                     }
                     request.cookies = [...(request.cookies ?? []), ...cookies];
