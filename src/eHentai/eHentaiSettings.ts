@@ -13,6 +13,15 @@ export async function getUseEx(stateManager: SourceStateManager): Promise<boolea
     return (await stateManager.retrieve('use_ex') as boolean) ?? false
 }
 
+// Returns true only when the toggle is enabled AND both IPB cookies are present
+export async function getUseExEnabled(stateManager: SourceStateManager): Promise<boolean> {
+    const useEx = await getUseEx(stateManager)
+    if (!useEx) return false
+    const member = await getIPBMemberId(stateManager)
+    const pass = await getIPBPassHash(stateManager)
+    return (member?.length ?? 0) > 0 && (pass?.length ?? 0) > 0
+}
+
 export async function getIPBMemberId(stateManager: SourceStateManager): Promise<string> {
     return (await stateManager.retrieve('ipb_member_id') as string) ?? ''
 }

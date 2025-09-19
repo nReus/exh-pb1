@@ -15,7 +15,7 @@ import {
 import {
     getDisplayedCategories,
     getExtraArgs,
-    getUseEx
+    getUseExEnabled
 } from './eHentaiSettings'
 
 export const parseArtist = (tags: string[]): string | undefined => {
@@ -137,9 +137,9 @@ export const parseTitle = (title: string): string => {
 
 export async function parseHomeSections(cheerio: CheerioAPI, requestManager: RequestManager, sections: HomeSection[], sectionCallback: (section: HomeSection) => void, sourceStateManager: SourceStateManager): Promise<void> {
     for (const section of sections) {
-        let $: CheerioStatic | undefined = undefined
-        const useEx = await getUseEx(sourceStateManager)
-        const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
+    let $: CheerioStatic | undefined = undefined
+    const useExEnabled = await getUseExEnabled(sourceStateManager)
+    const base = useExEnabled ? 'https://exhentai.org' : 'https://e-hentai.org'
 
         if (section.id == 'popular_recently') {
             $ = await getCheerioStatic(cheerio, requestManager, `${base}/popular`)

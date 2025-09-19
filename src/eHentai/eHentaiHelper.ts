@@ -11,7 +11,7 @@ import {
 } from './eHentaiParser'
 
 import {
-    getExtraArgs, getDisplayedCategories, getUseEx
+    getExtraArgs, getDisplayedCategories, getUseExEnabled
 } from './eHentaiSettings'
 
 export async function getGalleryData(ids: string[], requestManager: RequestManager): Promise<any> {
@@ -35,8 +35,9 @@ export async function getGalleryData(ids: string[], requestManager: RequestManag
 
 export async function getSearchData(query: string | undefined, page: number, categories: number, requestManager: RequestManager, cheerio: CheerioAPI, nextPageId: { id: number }, sourceStateManager: SourceStateManager): Promise<PartialSourceManga[]> {
     let finalQuery = (query ?? '') + ' ' + await getExtraArgs(sourceStateManager)
-    const useEx = await getUseEx(sourceStateManager)
-    const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
+    // Only use exhentai.org when the toggle is enabled AND both IPB cookies are present
+    const useExEnabled = await getUseExEnabled(sourceStateManager)
+    const base = useExEnabled ? 'https://exhentai.org' : 'https://e-hentai.org'
 
     const request = App.createRequest({
         url: `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,

@@ -42,7 +42,7 @@ import {
     getDisplayedCategories,
     settings,
     resetSettings,
-    getUseEx,
+    getUseExEnabled,
     getIPBMemberId,
     getIPBPassHash
 } from './eHentaiSettings'
@@ -53,10 +53,10 @@ export const getExportVersion = (EXTENSION_VERSION: string): string => {
 }
 
 export const eHentaiInfo: SourceInfo = {
-    version: getExportVersion('0.0.10'),
+    version: getExportVersion('0.0.11'),
     name: 'e-hentai',
     icon: 'icon.png',
-    author: 'kameia, loik',
+    author: 'kameia, loik, nReus',
     description: 'Extension to grab galleries from E-Hentai/ExHentai',
     contentRating: ContentRating.ADULT,
     websiteBaseURL: 'https://e-hentai.org',
@@ -73,7 +73,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
     constructor(public cheerio: CheerioAPI) { }
 
     private async getBaseUrl(): Promise<string> {
-        return (await getUseEx(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org'
+        return (await getUseExEnabled(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org'
     }
 
     readonly requestManager: RequestManager = App.createRequestManager({
@@ -81,7 +81,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
         requestTimeout: 15000,
         interceptor: {
             interceptRequest: async (request: Request): Promise<Request> => {
-                const useEx = await getUseEx(this.stateManager)
+                const useEx = await getUseExEnabled(this.stateManager)
                 const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
                 const cookies = []
 
