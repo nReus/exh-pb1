@@ -223,27 +223,43 @@ export interface UrlInfo {
 }
 
 export function parseUrlParams(url: string) : UrlInfo {
-    let ret = { id: 0, query: '', category: 0 }
+    const ret: UrlInfo = { id: 0, query: '', category: 0 }
     if (!url) return ret
 
+    // Extract the query part manually (no URL / URLSearchParams in PB runtime)
     let queryString = ''
-    try {
-        // Support absolute or relative URLs
-        const parsed = new URL(url, 'https://e-hentai.org')
-        queryString = parsed.search.startsWith('?') ? parsed.search.substring(1) : parsed.search
-    } catch {
-        const idx = url.indexOf('?')
-        queryString = idx >= 0 ? url.substring(idx + 1) : ''
+    const qIdx = url.indexOf('?')
+    if (qIdx >= 0) {
+        queryString = url.substring(qIdx + 1)
+    } else {
+        // Some callers may pass just the query string
+        queryString = url
     }
 
-    const params = new URLSearchParams(queryString)
-    const next = params.get('next')
-    const fsearch = params.get('f_search')
-    const fcats = params.get('f_cats')
+    // Split into key=value pairs
+    const pairs = queryString.split('&')
+    for (const pair of pairs) {
+        if (!pair) continue
+        const eqIdx = pair.indexOf('=')
+        const rawKey = eqIdx >= 0 ? pair.substring(0, eqIdx) : pair
+        const rawVal = eqIdx >= 0 ? pair.substring(eqIdx + 1) : ''
 
-    if (next) ret.id = parseInt(next)
-    if (fsearch) ret.query = fsearch
-    if (fcats) ret.category = parseInt(fcats)
+        // Decode components safely
+        let key = rawKey
+        let val = rawVal
+        try { key = decodeURIComponent(rawKey.replace(/\+/g, ' ')) } catch {}
+        try { val = decodeURIComponent(rawVal.replace(/\+/g, ' ')) } catch {}
+
+        if (key === 'next') {
+            const n = parseInt(val)
+            if (!Number.isNaN(n)) ret.id = n
+        } else if (key === 'f_search') {
+            ret.query = val
+        } else if (key === 'f_cats') {
+            const c = parseInt(val)
+            if (!Number.isNaN(c)) ret.category = c
+        }
+    }
 
     return ret
 }
