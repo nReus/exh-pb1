@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "test" : "npx paperback test",
-    "bundle": "paperback bundle",
+    "bundle": "mkdir -p bundles && paperback bundle",
     "serve": "paperback serve",
     "logcat": "paperback logcat --ip=192.168.1.1"
   },
