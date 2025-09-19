@@ -2059,27 +2059,39 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.resetSettings = exports.settings = exports.getDisplayedCategoriesStr = exports.getDisplayedCategories = exports.getIpbPassHash = exports.getIpbMemberId = exports.getBaseHost = exports.getExtraArgs = void 0;
 const eHentaiHelper_1 = require("./eHentaiHelper");
 async function getExtraArgs(stateManager) {
-    return await stateManager.retrieve('extra_args') ?? '';
+    const stored = await stateManager.retrieve('extra_args');
+    return typeof stored === 'string' ? stored : '';
 }
 exports.getExtraArgs = getExtraArgs;
 async function getBaseHost(stateManager) {
-    return await stateManager.retrieve('base_host') ?? 'e-hentai.org';
+    const stored = await stateManager.retrieve('base_host');
+    const validHosts = ['e-hentai.org', 'exhentai.org'];
+    return typeof stored === 'string' && validHosts.includes(stored) ? stored : 'e-hentai.org';
 }
 exports.getBaseHost = getBaseHost;
 async function getIpbMemberId(stateManager) {
-    return await stateManager.retrieve('ipb_member_id') ?? null;
+    const stored = await stateManager.retrieve('ipb_member_id');
+    return typeof stored === 'string' ? stored : null;
 }
 exports.getIpbMemberId = getIpbMemberId;
 async function getIpbPassHash(stateManager) {
-    return await stateManager.retrieve('ipb_pass_hash') ?? null;
+    const stored = await stateManager.retrieve('ipb_pass_hash');
+    return typeof stored === 'string' ? stored : null;
 }
 exports.getIpbPassHash = getIpbPassHash;
 async function getDisplayedCategories(stateManager) {
-    return await (await getDisplayedCategoriesStr(stateManager)).map((valueStr) => parseInt(valueStr));
+    const categoriesStr = await getDisplayedCategoriesStr(stateManager);
+    return categoriesStr
+        .map((valueStr) => parseInt(valueStr))
+        .filter((value) => !isNaN(value) && isFinite(value));
 }
 exports.getDisplayedCategories = getDisplayedCategories;
 async function getDisplayedCategoriesStr(stateManager) {
-    return await stateManager.retrieve('displayed_categories') ?? eHentaiHelper_1.eHentaiCategoriesList.getValueList();
+    const stored = await stateManager.retrieve('displayed_categories');
+    if (Array.isArray(stored)) {
+        return stored;
+    }
+    return eHentaiHelper_1.eHentaiCategoriesList.getValueList();
 }
 exports.getDisplayedCategoriesStr = getDisplayedCategoriesStr;
 const settings = (stateManager) => {
@@ -2094,9 +2106,6 @@ const settings = (stateManager) => {
                         header: 'General',
                         footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
                         rows: async () => {
-                            await Promise.all([
-                                getExtraArgs(stateManager)
-                            ]);
                             return await [
                                 App.createDUISelect({
                                     id: 'base_host',
