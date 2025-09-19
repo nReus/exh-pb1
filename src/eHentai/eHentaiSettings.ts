@@ -13,11 +13,16 @@ export async function getExtraArgs(stateManager: SourceStateManager): Promise<st
 }
 
 export async function getDisplayedCategories(stateManager: SourceStateManager): Promise<number[]> {
-    return await (await getDisplayedCategoriesStr(stateManager)).map((valueStr) => parseInt(valueStr))
+    const categoriesStr = await getDisplayedCategoriesStr(stateManager)
+    return categoriesStr.map((valueStr) => parseInt(valueStr))
 }
 
 export async function getDisplayedCategoriesStr(stateManager: SourceStateManager): Promise<string[]> {
-    return await stateManager.retrieve('displayed_categories') ?? eHentaiCategoriesList.getValueList()
+    const stored = await stateManager.retrieve('displayed_categories')
+    if (Array.isArray(stored)) {
+        return stored
+    }
+    return eHentaiCategoriesList.getValueList()
 }
 
 export async function getUseExHentai(stateManager: SourceStateManager): Promise<boolean> {
@@ -44,13 +49,7 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                         header: 'General',
                         footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
                         rows: async () => {
-                            await Promise.all([
-                                getExtraArgs(stateManager),
-                                getUseExHentai(stateManager),
-                                getIpbMemberId(stateManager),
-                                getIpbPassHash(stateManager)
-                            ])
-                            return await [
+                            return [
                                 App.createDUISwitch({
                                     id: 'use_exhentai',
                                     label: 'Use ExHentai',
