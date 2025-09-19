@@ -1,0 +1,204 @@
+import {
+    PartialSourceManga,
+    RequestManager,
+    SourceStateManager
+} from '@paperback/types'
+
+import {
+    parseMenuListPage,
+    parseUrlParams,
+    UrlInfo
+} from './eHentaiParser'
+
+import {
+    getExtraArgs, getDisplayedCategories,
+    getUsername,
+    getPassword,
+    getUseExHentai,
+    getIgneous
+} from './eHentaiSettings'
+
+export async function getGalleryData(ids: string[], requestManager: RequestManager, stateManager: SourceStateManager): Promise<any> {
+    const apiUrl = await getApiUrl(stateManager)
+    
+    const request = App.createRequest({
+        url: apiUrl,
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json'
+        },
+        data: {
+            'method': 'gdata',
+            'gidlist': ids.map(id => id.split('/')),
+            'namespace': 1
+        }
+    })
+
+    const data = await requestManager.schedule(request, 1)
+    const json = (typeof data.data == 'string') ? JSON.parse(data.data.replaceAll(/[\r\n]+/g, ' ')) : data.data
+    return json.gmetadata
+}
+
+export async function getSearchData(query: string | undefined, page: number, categories: number, requestManager: RequestManager, cheerio: CheerioAPI, nextPageId: { id: number }, sourceStateManager: SourceStateManager): Promise<PartialSourceManga[]> {
+    let finalQuery = (query ?? '') + ' ' + await getExtraArgs(sourceStateManager)
+    const baseUrl = await getBaseUrl(sourceStateManager)
+
+    const request = App.createRequest({
+        url: `${baseUrl}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,
+        method: 'GET'
+    })
+    const result = await requestManager.schedule(request, 1)
+    const $ = cheerio.load(result.data as string)
+
+    let urlInfo: UrlInfo = parseUrlParams($('#unext').attr('href') ?? '')
+    nextPageId.id = urlInfo.id
+
+    return parseMenuListPage($)
+}
+
+export function getRowDetails($: CheerioStatic, manga: CheerioElement, info: { id: string, title: string, image: string, subtitle: string }) {
+    info.id = idCleaner($('td.gl3c.glname', manga).contents().attr('href') ?? '/////')
+    info.title = $('.glink', manga).text().trim()
+    let imageObj: Cheerio | undefined = $(['div#it', info.id.split('/')[0],' div img'].join(''))
+    const dataSrc = imageObj.attr('data-src')
+    if ((typeof dataSrc != 'undefined')) {
+        info.image = dataSrc
+    } else {
+        info.image = imageObj.attr('src') as string
+    }
+    info.subtitle = $('td.gl1c.glcat', manga).text().trim()
+    return info
+}
+
+export function idCleaner(str: string | null): string {
+    const splitUrlContents = str?.split('/')
+    if (splitUrlContents == null) {
+        return `1`
+    }
+    
+    return `${splitUrlContents[4]}/${splitUrlContents[5]}`
+}
+
+export async function isCategoryHidden(category: number, sourceStateManager: SourceStateManager): Promise<boolean> {
+    const displayedCategories: number[] = await getDisplayedCategories(sourceStateManager)
+    return displayedCategories.filter((displayedCategory) => displayedCategory == category).length == 0
+}
+
+interface Category {
+    name: string;
+    value: string;
+}
+
+class eHentaiCategories {
+    Categories: Category[] = [
+        {
+            name: "Doujinshi",
+            value: '2'
+        },
+        {
+            name: "Manga",
+            value: '4'
+        },
+        {
+            name: "Artist CG",
+            value: '8'
+        },
+        {
+            name: "Game CG",
+            value: '16'
+        },
+        {
+            name: "Western",
+            value: '512'
+        },
+        {
+            name: "Non-H",
+            value: '256'
+        },
+        {
+            name: "Image Set",
+            value: '32'
+        },
+        {
+            name: "Cosplay",
+            value: '64'
+        },
+        {
+            name: "Asian Porn",
+            value: '128'
+        },
+        {
+            name: "Misc",
+            value: '1'
+        }
+    ]
+
+    getName(categoryValue: string): string {
+        return (
+            this.Categories.filter((category) => category.value == categoryValue)[0]?.name ?? ''
+        )
+    }
+
+    getValueList(): string[] {
+        return this.Categories.map((category) => category.value)
+    }
+}
+
+export const eHentaiCategoriesList = new eHentaiCategories()
+
+export async function getBaseUrl(stateManager: SourceStateManager): Promise<string> {
+    const useExHentai = await getUseExHentai(stateManager)
+    return useExHentai ? 'https://exhentai.org' : 'https://e-hentai.org'
+}
+
+export async function getApiUrl(stateManager: SourceStateManager): Promise<string> {
+    const useExHentai = await getUseExHentai(stateManager)
+    return useExHentai ? 'https://exhentai.org/api.php' : 'https://api.e-hentai.org/api.php'
+}
+
+export async function performLogin(requestManager: RequestManager, stateManager: SourceStateManager): Promise<void> {
+    const username = await getUsername(stateManager)
+    const password = await getPassword(stateManager)
+    
+    if (!username || !password) {
+        throw new Error('Username and password are required for ExHentai access')
+    }
+
+    // Perform login to forums
+    const loginRequest = App.createRequest({
+        url: 'https://forums.e-hentai.org/index.php?act=Login&CODE=01',
+        method: 'POST',
+        headers: {
+            'content-type': 'application/x-www-form-urlencoded',
+            'referer': 'https://forums.e-hentai.org/index.php?act=Login&CODE=00'
+        },
+        data: `UserName=${encodeURIComponent(username)}&PassWord=${encodeURIComponent(password)}&CookieDate=1`
+    })
+    
+    const response = await requestManager.schedule(loginRequest, 1)
+    
+    // Check if login was successful by looking for redirect or success indicators
+    if (response.status !== 200) {
+        throw new Error('Login failed - check your credentials')
+    }
+}
+
+export async function getAuthenticatedCookies(stateManager: SourceStateManager): Promise<any[]> {
+    const useExHentai = await getUseExHentai(stateManager)
+    const domain = useExHentai ? 'exhentai.org' : 'e-hentai.org'
+    
+    const cookies = [App.createCookie({ name: 'nw', value: '1', domain: domain })]
+    
+    if (useExHentai) {
+        const igneous = await getIgneous(stateManager)
+        if (igneous) {
+            cookies.push(App.createCookie({ 
+                name: 'igneous', 
+                value: igneous, 
+                domain: 'exhentai.org' 
+            }))
+        }
+    }
+    
+    return cookies
+}
