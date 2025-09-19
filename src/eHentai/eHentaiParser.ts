@@ -38,7 +38,7 @@ export const parseLanguage = (tags: string[]): string => {
         return "unknown";
     }
 
-    return languageTags[0]
+    return languageTags.join(", ")
 }
 
 async function getImage(url: string, requestManager: RequestManager, cheerio: CheerioAPI): Promise<string> {
@@ -53,9 +53,9 @@ async function getImage(url: string, requestManager: RequestManager, cheerio: Ch
     return $('#img').attr('src') ?? ''
 }
 
-export async function parsePage(id: string, page: number, requestManager: RequestManager, cheerio: CheerioAPI): Promise<string[]> {
+export async function parsePage(id: string, page: number, requestManager: RequestManager, cheerio: CheerioAPI, baseURL: string): Promise<string[]> {
     const request = App.createRequest({
-        url: `https://e-hentai.org/g/${id}/?p=${page}`,
+        url: `${baseURL}/g/${id}/?p=${page}`,
         method: 'GET'
     })
 
@@ -63,27 +63,30 @@ export async function parsePage(id: string, page: number, requestManager: Reques
     const $ = cheerio.load(response.data as string)
 
     const pageArr = []
-    const pageDivArr = $('div.gdtm').toArray()
+    const pageDivArr = $('#gdt a').toArray()
 
+    console.log(pageDivArr.length)
     for (const pageDiv of pageDivArr) {
-        pageArr.push(getImage($('a', pageDiv).attr('href') ?? '', requestManager, cheerio))
+        pageArr.push(getImage($(pageDiv).attr('href') ?? '', requestManager, cheerio))
     }
 
     return Promise.all(pageArr)
 }
 
-export async function parsePages(mangaId: string, pageCount: string, requestManager: RequestManager, cheerio: CheerioAPI): Promise<string[]> {
+export async function parsePages(mangaId: string, pageCount: string, requestManager: RequestManager, cheerio: CheerioAPI, baseURL: string): Promise<string[]> {
     const splitPageCount: string[] = pageCount.split('-')
 
     if ((splitPageCount[0] ?? '0') == 'Full') {
-        if (splitPageCount.length != 2) {
+        if (splitPageCount.length != 3) {
             return []
         }
 
         const pages: number = parseInt(splitPageCount[1] ?? '0')
+        const imagesPerPage: number = parseInt(splitPageCount[2] ?? '0')
+        const loopAmt: number = Math.ceil(pages / imagesPerPage) - 1
         const pagesArr = []
-        for (let i = 0; i <= pages / 40; i++) {
-            pagesArr.push(parsePage(mangaId, i, requestManager, cheerio))
+        for (let i = 0; i <= loopAmt; i++) {
+            pagesArr.push(parsePage(mangaId, i, requestManager, cheerio, baseURL))
         }
         return Promise.all(pagesArr).then(pages => pages.reduce((prev, cur) => [...prev, ...cur], []))
     } else if ((splitPageCount[0] ?? '0') == 'Pages') {
@@ -91,7 +94,7 @@ export async function parsePages(mangaId: string, pageCount: string, requestMana
             return []
         }
         const websitePageNum: number = parseInt(splitPageCount[1] ?? '0')
-        return parsePage(mangaId, websitePageNum, requestManager, cheerio)
+        return parsePage(mangaId, websitePageNum, requestManager, cheerio, baseURL)
     }
 
     return []
@@ -131,12 +134,12 @@ export const parseTitle = (title: string): string => {
     return title.replaceAll(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
 }
 
-export async function parseHomeSections(cheerio: CheerioAPI, requestManager: RequestManager, sections: HomeSection[], sectionCallback: (section: HomeSection) => void, sourceStateManager: SourceStateManager): Promise<void> {
+export async function parseHomeSections(cheerio: CheerioAPI, requestManager: RequestManager, sections: HomeSection[], sectionCallback: (section: HomeSection) => void, sourceStateManager: SourceStateManager, baseURL: string): Promise<void> {
     for (const section of sections) {
         let $: CheerioStatic | undefined = undefined
 
         if (section.id == 'popular_recently') {
-            $ = await getCheerioStatic(cheerio, requestManager, 'https://e-hentai.org/popular')
+            $ = await getCheerioStatic(cheerio, requestManager, `${baseURL}/popular`)
             if ($ != null) {
                 section.items = parseMenuListPage($, true)
             }
@@ -145,7 +148,7 @@ export async function parseHomeSections(cheerio: CheerioAPI, requestManager: Req
         if (section.id == 'latest_galleries') {
             const displayedCategories: number[] = await getDisplayedCategories(sourceStateManager)
             const excludedCategories: number = displayedCategories.reduce((prev, cur) => prev - cur, 1023)
-            $ = await getCheerioStatic(cheerio, requestManager, 'https://e-hentai.org/?f_cats=' + excludedCategories + '&f_search=' + encodeURIComponent(await getExtraArgs(sourceStateManager)))
+            $ = await getCheerioStatic(cheerio, requestManager, `${baseURL}/?f_cats=${excludedCategories}&f_search=${encodeURIComponent(await getExtraArgs(sourceStateManager))}`)
             if ($ != null) {
                 section.items = parseMenuListPage($)
             }
@@ -200,7 +203,7 @@ export function parseMenuListPage($: CheerioStatic, ignoreExpectedEntryAmount: b
     return ret
 }
 
-async function getCheerioStatic(cheerio: CheerioAPI, requestManager: RequestManager, urlParam: string): Promise<CheerioStatic> {
+export async function getCheerioStatic(cheerio: CheerioAPI, requestManager: RequestManager, urlParam: string): Promise<CheerioStatic> {
     const request = App.createRequest({
         url: urlParam,
         method: 'GET'

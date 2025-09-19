@@ -1,6 +1,9 @@
 import {
     DUIButton,
     DUINavigationButton,
+    DUISection,
+    DUISwitch,
+    DUIInputField,
     SourceStateManager
 } from '@paperback/types'
 
@@ -20,16 +23,14 @@ export async function getDisplayedCategoriesStr(stateManager: SourceStateManager
     return await stateManager.retrieve('displayed_categories') ?? eHentaiCategoriesList.getValueList()
 }
 
-export async function getUseExHentai(stateManager: SourceStateManager): Promise<boolean> {
-    return (await stateManager.retrieve('use_exhentai') as boolean) ?? false
+export async function isExHentaiEnabled(stateManager: SourceStateManager): Promise<boolean> {
+    return await stateManager.retrieve('exhentai_enabled') ?? false;
 }
 
-export async function getIpbMemberId(stateManager: SourceStateManager): Promise<string> {
-    return (await stateManager.retrieve('ipb_member_id') as string) ?? ''
-}
-
-export async function getIpbPassHash(stateManager: SourceStateManager): Promise<string> {
-    return (await stateManager.retrieve('ipb_pass_hash') as string) ?? ''
+export async function getExHentaiCookies(stateManager: SourceStateManager): Promise<{ memberId: string; passHash: string }> {
+    const memberId = await stateManager.retrieve('ipb_member_id') ?? '';
+    const passHash = await stateManager.retrieve('ipb_pass_hash') ?? '';
+    return { memberId, passHash };
 }
 
 export const settings = (stateManager: SourceStateManager): DUINavigationButton => {
@@ -45,42 +46,9 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                         footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
                         rows: async () => {
                             await Promise.all([
-                                getExtraArgs(stateManager),
-                                getUseExHentai(stateManager),
-                                getIpbMemberId(stateManager),
-                                getIpbPassHash(stateManager)
+                                getExtraArgs(stateManager)
                             ])
                             return await [
-                                App.createDUISwitch({
-                                    id: 'use_exhentai',
-                                    label: 'Use ExHentai',
-                                    value: App.createDUIBinding({
-                                        get: async () => getUseExHentai(stateManager),
-                                        set: async (newValue: boolean) => {
-                                            await stateManager.store('use_exhentai', newValue)
-                                        }
-                                    })
-                                }),
-                                App.createDUIInputField({
-                                    id: 'ipb_member_id',
-                                    label: 'IPB Member ID (for ExHentai)',
-                                    value: App.createDUIBinding({
-                                        get: async () => getIpbMemberId(stateManager),
-                                        set: async (newValue: string) => {
-                                            await stateManager.store('ipb_member_id', newValue)
-                                        }
-                                    })
-                                }),
-                                App.createDUIInputField({
-                                    id: 'ipb_pass_hash',
-                                    label: 'IPB Pass Hash (for ExHentai)',
-                                    value: App.createDUIBinding({
-                                        get: async () => getIpbPassHash(stateManager),
-                                        set: async (newValue: string) => {
-                                            await stateManager.store('ipb_pass_hash', newValue)
-                                        }
-                                    })
-                                }),
                                 App.createDUIInputField({
                                     id: 'extra_args',
                                     label: 'Additional filter arguments',
@@ -113,6 +81,38 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                             ]
                         },
                         isHidden: false
+                    }),
+                    App.createDUISection({
+                        id: 'exhentai',
+                        header: 'ExHentai Settings',
+                        footer: 'Enable ExHentai access with your forum login cookies. Obtain cookies from forums.e-hentai.org after logging in.',
+                        rows: () => Promise.resolve([
+                            App.createDUISwitch({
+                                id: 'exhentai_toggle',
+                                label: 'Enable ExHentai',
+                                value: App.createDUIBinding({
+                                    get: async () => await isExHentaiEnabled(stateManager),
+                                    set: async (value: boolean) => await stateManager.store('exhentai_enabled', value)
+                                })
+                            }),
+                            App.createDUIInputField({
+                                id: 'ipb_member_id',
+                                label: 'IPB Member ID',
+                                value: App.createDUIBinding({
+                                    get: async () => (await getExHentaiCookies(stateManager)).memberId,
+                                    set: async (value: string) => await stateManager.store('ipb_member_id', value)
+                                })
+                            }),
+                            App.createDUIInputField({
+                                id: 'ipb_pass_hash',
+                                label: 'IPB Pass Hash',
+                                value: App.createDUIBinding({
+                                    get: async () => (await getExHentaiCookies(stateManager)).passHash,
+                                    set: async (value: string) => await stateManager.store('ipb_pass_hash', value)
+                                })
+                            })
+                        ]),
+                        isHidden: false
                     })
                 ])
             }
@@ -127,7 +127,7 @@ export const resetSettings = (stateManager: SourceStateManager): DUIButton => {
         onTap: async () => {
             await Promise.all([
                 stateManager.store('extra_args', null),
-                stateManager.store('use_exhentai', null),
+                stateManager.store('exhentai_enabled', null),
                 stateManager.store('ipb_member_id', null),
                 stateManager.store('ipb_pass_hash', null)
             ])
