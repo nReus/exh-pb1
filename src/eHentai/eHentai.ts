@@ -109,9 +109,10 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
 
     stateManager = App.createSourceStateManager();
 
-    async getMangaShareUrl(mangaId: string): Promise<string> {
-        const baseUrl = await getBaseUrl(this.stateManager)
-        return `${baseUrl}/g/${mangaId}`
+    getMangaShareUrl(mangaId: string): string {
+        // Since we can't use async here, we'll default to e-hentai.org
+        // The share URL will work for both sites since they use the same gallery ID format
+        return `https://e-hentai.org/g/${mangaId}`
     }
 
     async getSearchTags(): Promise<TagSection[]> {
@@ -191,7 +192,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
     }
 
     async getChapters(mangaId: string): Promise<Chapter[]> {
-        let data = (await getGalleryData([mangaId], this.requestManager))[0]
+        let data = (await getGalleryData([mangaId], this.requestManager, this.stateManager))[0]
         const chapters: Chapter[] = []
         const chaptersLoopNum: number = Math.ceil(data.filecount / 40)
 
