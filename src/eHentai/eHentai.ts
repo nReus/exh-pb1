@@ -42,7 +42,7 @@ import {
     getDisplayedCategories,
     settings,
     resetSettings,
-    getUseExEnabled,
+    getUseEx,
     getIPBMemberId,
     getIPBPassHash
 } from './eHentaiSettings'
@@ -73,7 +73,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
     constructor(public cheerio: CheerioAPI) { }
 
     private async getBaseUrl(): Promise<string> {
-        return (await getUseExEnabled(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org'
+        return (await getUseEx(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org'
     }
 
     readonly requestManager: RequestManager = App.createRequestManager({
@@ -81,7 +81,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
         requestTimeout: 15000,
         interceptor: {
             interceptRequest: async (request: Request): Promise<Request> => {
-                const useEx = await getUseExEnabled(this.stateManager)
+                const useEx = await getUseEx(this.stateManager)
                 const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
                 const cookies = []
 
