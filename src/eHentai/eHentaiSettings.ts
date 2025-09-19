@@ -9,27 +9,39 @@ import {
 } from './eHentaiHelper'
 
 export async function getExtraArgs(stateManager: SourceStateManager): Promise<string> {
-    return (await stateManager.retrieve('extra_args') as string) ?? ''
+    const stored = await stateManager.retrieve('extra_args')
+    return typeof stored === 'string' ? stored : ''
 }
 
 export async function getBaseHost(stateManager: SourceStateManager): Promise<string> {
-    return (await stateManager.retrieve('base_host') as string) ?? 'e-hentai.org'
+    const stored = await stateManager.retrieve('base_host')
+    const validHosts = ['e-hentai.org', 'exhentai.org']
+    return typeof stored === 'string' && validHosts.includes(stored) ? stored : 'e-hentai.org'
 }
 
 export async function getIpbMemberId(stateManager: SourceStateManager): Promise<string | null> {
-    return (await stateManager.retrieve('ipb_member_id') as string) ?? null
+    const stored = await stateManager.retrieve('ipb_member_id')
+    return typeof stored === 'string' ? stored : null
 }
 
 export async function getIpbPassHash(stateManager: SourceStateManager): Promise<string | null> {
-    return (await stateManager.retrieve('ipb_pass_hash') as string) ?? null
+    const stored = await stateManager.retrieve('ipb_pass_hash')
+    return typeof stored === 'string' ? stored : null
 }
 
 export async function getDisplayedCategories(stateManager: SourceStateManager): Promise<number[]> {
-    return await (await getDisplayedCategoriesStr(stateManager)).map((valueStr) => parseInt(valueStr))
+    const categoriesStr = await getDisplayedCategoriesStr(stateManager)
+    return categoriesStr
+        .map((valueStr) => parseInt(valueStr))
+        .filter((value) => !isNaN(value) && isFinite(value))
 }
 
 export async function getDisplayedCategoriesStr(stateManager: SourceStateManager): Promise<string[]> {
-    return await stateManager.retrieve('displayed_categories') ?? eHentaiCategoriesList.getValueList()
+    const stored = await stateManager.retrieve('displayed_categories')
+    if (Array.isArray(stored)) {
+        return stored
+    }
+    return eHentaiCategoriesList.getValueList()
 }
 
 export const settings = (stateManager: SourceStateManager): DUINavigationButton => {
@@ -44,9 +56,6 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                         header: 'General',
                         footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
                         rows: async () => {
-                            await Promise.all([
-                                getExtraArgs(stateManager)
-                            ])
                             return await [
                                 App.createDUISelect({
                                     id: 'base_host',
