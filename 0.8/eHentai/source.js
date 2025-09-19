@@ -1450,7 +1450,7 @@ exports.eHentaiInfo = {
     name: 'e-hentai',
     icon: 'icon.png',
     author: 'kameia, loik',
-    description: 'Extension to grab galleries from E-Hentai',
+    description: 'Extension to grab galleries from E-Hentai/ExHentai',
     contentRating: types_1.ContentRating.ADULT,
     websiteBaseURL: 'https://e-hentai.org',
     authorWebsite: 'https://github.com/kameiaa',
@@ -1463,32 +1463,34 @@ exports.eHentaiInfo = {
 class eHentai {
     constructor(cheerio) {
         this.cheerio = cheerio;
-        this.stateManager = App.createSourceStateManager();
         this.requestManager = App.createRequestManager({
             requestsPerSecond: 3,
             requestTimeout: 15000,
             interceptor: {
                 interceptRequest: async (request) => {
-                    const baseHost = await (0, eHentaiSettings_1.getBaseHost)(this.stateManager);
+                    const useEx = await (0, eHentaiSettings_1.getUseEx)(this.stateManager);
+                    const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
+                    const cookies = [];
+                    // Always set UA and referer to selected base
                     request.headers = {
                         ...(request.headers ?? {}),
                         ...{
                             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 12_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15',
-                            'referer': `https://${baseHost}/`
+                            'referer': `${base}/`
                         }
                     };
-                    const cookies = [
-                        App.createCookie({ name: 'nw', value: '1', domain: baseHost })
-                    ];
-                    if (baseHost === 'exhentai.org') {
-                        const mem = await (0, eHentaiSettings_1.getIpbMemberId)(this.stateManager);
-                        const pass = await (0, eHentaiSettings_1.getIpbPassHash)(this.stateManager);
-                        if (mem)
-                            cookies.push(App.createCookie({ name: 'ipb_member_id', value: mem, domain: baseHost }));
-                        if (pass)
-                            cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: pass, domain: baseHost }));
+                    // For gallery pages, NW cookie gives simplified viewer (ok to send for both)
+                    cookies.push(App.createCookie({ name: 'nw', value: '1', domain: `${base}/` }));
+                    // If ExHentai is enabled, attach IPB cookies
+                    if (useEx) {
+                        const memberId = await (0, eHentaiSettings_1.getIPBMemberId)(this.stateManager);
+                        const passHash = await (0, eHentaiSettings_1.getIPBPassHash)(this.stateManager);
+                        if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
+                            cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: `${base}/` }));
+                            cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: `${base}/` }));
+                        }
                     }
-                    request.cookies = cookies;
+                    request.cookies = [...(request.cookies ?? []), ...cookies];
                     return request;
                 },
                 interceptResponse: async (response) => {
@@ -1496,8 +1498,13 @@ class eHentai {
                 }
             }
         });
+        this.stateManager = App.createSourceStateManager();
+    }
+    async getBaseUrl() {
+        return (await (0, eHentaiSettings_1.getUseEx)(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org';
     }
     getMangaShareUrl(mangaId) {
+        // Share URL kept on e-hentai.org to avoid async here
         return `https://e-hentai.org/g/${mangaId}`;
     }
     async getSearchTags() {
@@ -1573,22 +1580,20 @@ class eHentai {
         let data = (await (0, eHentaiHelper_1.getGalleryData)([mangaId], this.requestManager))[0];
         const chapters = [];
         // Load page to get how much images there are per page
-        // Get the "Showing 1 - 20 of 42 images" text from the html
+        const base = await this.getBaseUrl();
         let $;
-        $ = await (0, eHentaiParser_1.getCheerioStatic)(this.cheerio, this.requestManager, 'https://e-hentai.org/g/' + mangaId);
+        $ = await (0, eHentaiParser_1.getCheerioStatic)(this.cheerio, this.requestManager, `${base}/g/${mangaId}`);
         const showing_text = $('p.gpc').text();
-        // https://regexr.com
         const regexParse = /(\d[\d, ]*) - (\d[\d, ]*) of (\d[\d, ]*)/;
         const match = showing_text.match(regexParse);
         if (!match || match.length < 4) {
-            console.log("getChapters - No showing text match found with regex");
+            console.log('getChapters - No showing text match found with regex');
             return chapters;
         }
         const maxPerPageStr = match[2];
         const maxImagesStr = match[3];
-        // Convert the extracted strings into integers by removing commas and spaces
-        const maxPerPage = parseInt(maxPerPageStr.replace(/[ ,]/g, ""), 10);
-        const maxImages = parseInt(maxImagesStr.replace(/[ ,]/g, ""), 10);
+        const maxPerPage = parseInt(maxPerPageStr.replace(/[ ,]/g, ''), 10);
+        const maxImages = parseInt(maxImagesStr.replace(/[ ,]/g, ''), 10);
         let chaptersLoopNum = 1;
         if (maxImages != maxPerPage) {
             chaptersLoopNum = Math.ceil(maxImages / maxPerPage);
@@ -1618,10 +1623,11 @@ class eHentai {
         return chapters;
     }
     async getChapterDetails(mangaId, chapterId) {
+        const base = await this.getBaseUrl();
         return App.createChapterDetails({
             mangaId: mangaId,
             id: chapterId,
-            pages: await (0, eHentaiParser_1.parsePages)(mangaId, chapterId, this.requestManager, this.cheerio, this.stateManager)
+            pages: await (0, eHentaiParser_1.parsePages)(mangaId, chapterId, this.requestManager, this.cheerio, base)
         });
     }
     async getSearchResults(query, metadata) {
@@ -1697,9 +1703,9 @@ class eHentai {
         }));
     }
     async getCloudflareBypassRequestAsync() {
-        const baseHost = await (0, eHentaiSettings_1.getBaseHost)(this.stateManager);
+        const base = await this.getBaseUrl();
         return App.createRequest({
-            url: `https://${baseHost}/`,
+            url: `${base}/`,
             method: 'GET'
         });
     }
@@ -1732,9 +1738,10 @@ async function getGalleryData(ids, requestManager) {
 exports.getGalleryData = getGalleryData;
 async function getSearchData(query, page, categories, requestManager, cheerio, nextPageId, sourceStateManager) {
     let finalQuery = (query ?? '') + ' ' + await (0, eHentaiSettings_1.getExtraArgs)(sourceStateManager);
-    const baseHost = await (0, eHentaiSettings_1.getBaseHost)(sourceStateManager);
+    const useEx = await (0, eHentaiSettings_1.getUseEx)(sourceStateManager);
+    const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
     const request = App.createRequest({
-        url: `https://${baseHost}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,
+        url: `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,
         method: 'GET'
     });
     const result = await requestManager.schedule(request, 1);
@@ -1848,9 +1855,9 @@ exports.parseArtist = parseArtist;
 const parseLanguage = (tags) => {
     const languageTags = tags.filter(tag => tag.startsWith('language:') && tag != 'language:translated').map(tag => tag.substring(9));
     if (languageTags.length == 0 || languageTags[0] == null) {
-        return "unknown";
+        return 'unknown';
     }
-    return languageTags.join(", ");
+    return languageTags.join(', ');
 };
 exports.parseLanguage = parseLanguage;
 async function getImage(url, requestManager, cheerio) {
@@ -1862,9 +1869,9 @@ async function getImage(url, requestManager, cheerio) {
     const $ = cheerio.load(data.data);
     return $('#img').attr('src') ?? '';
 }
-async function parsePage(id, page, requestManager, cheerio, baseHost) {
+async function parsePage(id, page, requestManager, cheerio, baseUrl) {
     const request = App.createRequest({
-        url: `https://${baseHost}/g/${id}/?p=${page}`,
+        url: `${baseUrl}/g/${id}/?p=${page}`,
         method: 'GET'
     });
     const response = await requestManager.schedule(request, 1);
@@ -1878,8 +1885,7 @@ async function parsePage(id, page, requestManager, cheerio, baseHost) {
     return Promise.all(pageArr);
 }
 exports.parsePage = parsePage;
-async function parsePages(mangaId, pageCount, requestManager, cheerio, sourceStateManager) {
-    const baseHost = await (0, eHentaiSettings_1.getBaseHost)(sourceStateManager);
+async function parsePages(mangaId, pageCount, requestManager, cheerio, baseUrl) {
     const splitPageCount = pageCount.split('-');
     if ((splitPageCount[0] ?? '0') == 'Full') {
         if (splitPageCount.length != 3) {
@@ -1890,7 +1896,7 @@ async function parsePages(mangaId, pageCount, requestManager, cheerio, sourceSta
         const loopAmt = Math.ceil(pages / imagesPerPage) - 1;
         const pagesArr = [];
         for (let i = 0; i <= loopAmt; i++) {
-            pagesArr.push(parsePage(mangaId, i, requestManager, cheerio, baseHost));
+            pagesArr.push(parsePage(mangaId, i, requestManager, cheerio, baseUrl));
         }
         return Promise.all(pagesArr).then(pages => pages.reduce((prev, cur) => [...prev, ...cur], []));
     }
@@ -1899,7 +1905,7 @@ async function parsePages(mangaId, pageCount, requestManager, cheerio, sourceSta
             return [];
         }
         const websitePageNum = parseInt(splitPageCount[1] ?? '0');
-        return parsePage(mangaId, websitePageNum, requestManager, cheerio, baseHost);
+        return parsePage(mangaId, websitePageNum, requestManager, cheerio, baseUrl);
     }
     return [];
 }
@@ -1960,11 +1966,12 @@ const parseTitle = (title) => {
 };
 exports.parseTitle = parseTitle;
 async function parseHomeSections(cheerio, requestManager, sections, sectionCallback, sourceStateManager) {
-    const baseHost = await (0, eHentaiSettings_1.getBaseHost)(sourceStateManager);
     for (const section of sections) {
         let $ = undefined;
+        const useEx = await (0, eHentaiSettings_1.getUseEx)(sourceStateManager);
+        const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
         if (section.id == 'popular_recently') {
-            $ = await getCheerioStatic(cheerio, requestManager, `https://${baseHost}/popular`);
+            $ = await getCheerioStatic(cheerio, requestManager, `${base}/popular`);
             if ($ != null) {
                 section.items = parseMenuListPage($, true);
             }
@@ -1972,7 +1979,7 @@ async function parseHomeSections(cheerio, requestManager, sections, sectionCallb
         if (section.id == 'latest_galleries') {
             const displayedCategories = await (0, eHentaiSettings_1.getDisplayedCategories)(sourceStateManager);
             const excludedCategories = displayedCategories.reduce((prev, cur) => prev - cur, 1023);
-            $ = await getCheerioStatic(cheerio, requestManager, `https://${baseHost}/?f_cats=${excludedCategories}&f_search=` + encodeURIComponent(await (0, eHentaiSettings_1.getExtraArgs)(sourceStateManager)));
+            $ = await getCheerioStatic(cheerio, requestManager, `${base}/?f_cats=${excludedCategories}&f_search=${encodeURIComponent(await (0, eHentaiSettings_1.getExtraArgs)(sourceStateManager))}`);
             if ($ != null) {
                 section.items = parseMenuListPage($);
             }
@@ -2032,23 +2039,28 @@ async function getCheerioStatic(cheerio, requestManager, urlParam) {
 exports.getCheerioStatic = getCheerioStatic;
 function parseUrlParams(url) {
     let ret = { id: 0, query: '', category: 0 };
-    let trimmed = url.substring(22);
-    let splitTrimmed = trimmed.split('&');
-    for (const element of splitTrimmed) {
-        let varValue = element.split('=');
-        if (varValue[1] == null) {
-            continue;
-        }
-        if (varValue[0] == 'next') {
-            ret.id = parseInt(varValue[1]);
-        }
-        if (varValue[0] == 'f_search') {
-            ret.query = varValue[1];
-        }
-        if (varValue[0] == 'f_cats') {
-            ret.category = parseInt(varValue[1]);
-        }
+    if (!url)
+        return ret;
+    let queryString = '';
+    try {
+        // Support absolute or relative URLs
+        const parsed = new URL(url, 'https://e-hentai.org');
+        queryString = parsed.search.startsWith('?') ? parsed.search.substring(1) : parsed.search;
     }
+    catch {
+        const idx = url.indexOf('?');
+        queryString = idx >= 0 ? url.substring(idx + 1) : '';
+    }
+    const params = new URLSearchParams(queryString);
+    const next = params.get('next');
+    const fsearch = params.get('f_search');
+    const fcats = params.get('f_cats');
+    if (next)
+        ret.id = parseInt(next);
+    if (fsearch)
+        ret.query = fsearch;
+    if (fcats)
+        ret.category = parseInt(fcats);
     return ret;
 }
 exports.parseUrlParams = parseUrlParams;
@@ -2056,78 +2068,31 @@ exports.parseUrlParams = parseUrlParams;
 },{"./eHentaiHelper":71,"./eHentaiSettings":73,"entities":69}],73:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetSettings = exports.settings = exports.getDisplayedCategoriesStr = exports.getDisplayedCategories = exports.getIpbPassHash = exports.getIpbMemberId = exports.getBaseHost = exports.getExtraArgs = void 0;
+exports.resetSettings = exports.settings = exports.getDisplayedCategoriesStr = exports.getDisplayedCategories = exports.getExtraArgs = exports.getIPBPassHash = exports.getIPBMemberId = exports.getUseEx = void 0;
 const eHentaiHelper_1 = require("./eHentaiHelper");
+// New helpers for ExHentai settings
+async function getUseEx(stateManager) {
+    return await stateManager.retrieve('use_ex') ?? false;
+}
+exports.getUseEx = getUseEx;
+async function getIPBMemberId(stateManager) {
+    return await stateManager.retrieve('ipb_member_id') ?? '';
+}
+exports.getIPBMemberId = getIPBMemberId;
+async function getIPBPassHash(stateManager) {
+    return await stateManager.retrieve('ipb_pass_hash') ?? '';
+}
+exports.getIPBPassHash = getIPBPassHash;
 async function getExtraArgs(stateManager) {
-    try {
-        const stored = await stateManager.retrieve('extra_args');
-        return typeof stored === 'string' ? stored : '';
-    }
-    catch (error) {
-        console.log('Error retrieving extra_args:', error);
-        return '';
-    }
+    return await stateManager.retrieve('extra_args') ?? '';
 }
 exports.getExtraArgs = getExtraArgs;
-async function getBaseHost(stateManager) {
-    try {
-        const stored = await stateManager.retrieve('base_host');
-        const validHosts = ['e-hentai.org', 'exhentai.org'];
-        return typeof stored === 'string' && validHosts.includes(stored) ? stored : 'e-hentai.org';
-    }
-    catch (error) {
-        console.log('Error retrieving base_host:', error);
-        return 'e-hentai.org';
-    }
-}
-exports.getBaseHost = getBaseHost;
-async function getIpbMemberId(stateManager) {
-    try {
-        const stored = await stateManager.retrieve('ipb_member_id');
-        return typeof stored === 'string' ? stored : null;
-    }
-    catch (error) {
-        console.log('Error retrieving ipb_member_id:', error);
-        return null;
-    }
-}
-exports.getIpbMemberId = getIpbMemberId;
-async function getIpbPassHash(stateManager) {
-    try {
-        const stored = await stateManager.retrieve('ipb_pass_hash');
-        return typeof stored === 'string' ? stored : null;
-    }
-    catch (error) {
-        console.log('Error retrieving ipb_pass_hash:', error);
-        return null;
-    }
-}
-exports.getIpbPassHash = getIpbPassHash;
 async function getDisplayedCategories(stateManager) {
-    try {
-        const categoriesStr = await getDisplayedCategoriesStr(stateManager);
-        return categoriesStr
-            .map((valueStr) => parseInt(valueStr))
-            .filter((value) => !isNaN(value) && isFinite(value));
-    }
-    catch (error) {
-        console.log('Error getting displayed categories:', error);
-        return eHentaiHelper_1.eHentaiCategoriesList.getValueList().map(v => parseInt(v)).filter(v => !isNaN(v));
-    }
+    return await (await getDisplayedCategoriesStr(stateManager)).map((valueStr) => parseInt(valueStr));
 }
 exports.getDisplayedCategories = getDisplayedCategories;
 async function getDisplayedCategoriesStr(stateManager) {
-    try {
-        const stored = await stateManager.retrieve('displayed_categories');
-        if (Array.isArray(stored) && stored.length > 0) {
-            return stored;
-        }
-        return eHentaiHelper_1.eHentaiCategoriesList.getValueList();
-    }
-    catch (error) {
-        console.log('Error retrieving displayed_categories:', error);
-        return eHentaiHelper_1.eHentaiCategoriesList.getValueList();
-    }
+    return await stateManager.retrieve('displayed_categories') ?? eHentaiHelper_1.eHentaiCategoriesList.getValueList();
 }
 exports.getDisplayedCategoriesStr = getDisplayedCategoriesStr;
 const settings = (stateManager) => {
@@ -2140,65 +2105,55 @@ const settings = (stateManager) => {
                     App.createDUISection({
                         id: 'general',
                         header: 'General',
-                        footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
-                        rows: () => {
-                            return Promise.resolve([
-                                App.createDUISelect({
-                                    id: 'base_host',
-                                    label: 'Site',
-                                    options: ['e-hentai.org', 'exhentai.org'],
-                                    labelResolver: (option) => Promise.resolve(option),
+                        footer: 'Affects Latest Galleries and search. Enable ExHentai and provide ipb_member_id + ipb_pass_hash to access Ex.',
+                        rows: async () => {
+                            await Promise.all([
+                                getExtraArgs(stateManager),
+                                getUseEx(stateManager),
+                                getIPBMemberId(stateManager),
+                                getIPBPassHash(stateManager)
+                            ]);
+                            return await [
+                                // Toggle ExHentai
+                                App.createDUISwitch({
+                                    id: 'use_ex',
+                                    label: 'Use ExHentai',
                                     value: App.createDUIBinding({
-                                        get: () => getBaseHost(stateManager),
-                                        set: (newValue) => {
-                                            return stateManager.store('base_host', newValue).catch(error => {
-                                                console.log('Error storing base_host:', error);
-                                            });
+                                        get: async () => getUseEx(stateManager),
+                                        set: async (newValue) => {
+                                            await stateManager.store('use_ex', newValue);
                                         }
-                                    }),
-                                    allowsMultiselect: false
+                                    })
                                 }),
+                                // Cookie inputs for ExHentai
                                 App.createDUIInputField({
                                     id: 'ipb_member_id',
-                                    label: 'IPB Member ID (ExHentai)',
+                                    label: 'ipb_member_id (ExHentai)',
                                     value: App.createDUIBinding({
-                                        get: async () => {
-                                            const value = await getIpbMemberId(stateManager);
-                                            return value ?? '';
-                                        },
-                                        set: (newValue) => {
-                                            const valueToStore = newValue.trim() === '' ? null : newValue.trim();
-                                            return stateManager.store('ipb_member_id', valueToStore).catch(error => {
-                                                console.log('Error storing ipb_member_id:', error);
-                                            });
+                                        get: async () => getIPBMemberId(stateManager),
+                                        set: async (newValue) => {
+                                            await stateManager.store('ipb_member_id', newValue?.trim() ?? '');
                                         }
                                     })
                                 }),
                                 App.createDUIInputField({
                                     id: 'ipb_pass_hash',
-                                    label: 'IPB Pass Hash (ExHentai)',
+                                    label: 'ipb_pass_hash (ExHentai)',
                                     value: App.createDUIBinding({
-                                        get: async () => {
-                                            const value = await getIpbPassHash(stateManager);
-                                            return value ?? '';
-                                        },
-                                        set: (newValue) => {
-                                            const valueToStore = newValue.trim() === '' ? null : newValue.trim();
-                                            return stateManager.store('ipb_pass_hash', valueToStore).catch(error => {
-                                                console.log('Error storing ipb_pass_hash:', error);
-                                            });
+                                        get: async () => getIPBPassHash(stateManager),
+                                        set: async (newValue) => {
+                                            await stateManager.store('ipb_pass_hash', newValue?.trim() ?? '');
                                         }
                                     })
                                 }),
+                                // Existing controls
                                 App.createDUIInputField({
                                     id: 'extra_args',
                                     label: 'Additional filter arguments',
                                     value: App.createDUIBinding({
-                                        get: () => getExtraArgs(stateManager),
-                                        set: (newValue) => {
-                                            return stateManager.store('extra_args', newValue).catch(error => {
-                                                console.log('Error storing extra_args:', error);
-                                            });
+                                        get: async () => getExtraArgs(stateManager),
+                                        set: async (newValue) => {
+                                            await stateManager.store('extra_args', newValue);
                                         }
                                     })
                                 }),
@@ -2206,19 +2161,16 @@ const settings = (stateManager) => {
                                     id: 'displayed_categories',
                                     label: 'Displayed Categories',
                                     options: eHentaiHelper_1.eHentaiCategoriesList.getValueList(),
-                                    labelResolver: (option) => Promise.resolve(eHentaiHelper_1.eHentaiCategoriesList.getName(option)),
+                                    labelResolver: async (option) => eHentaiHelper_1.eHentaiCategoriesList.getName(option),
                                     value: App.createDUIBinding({
-                                        get: () => getDisplayedCategoriesStr(stateManager),
-                                        set: (newValue) => {
-                                            const validatedValue = Array.isArray(newValue) ? newValue : [];
-                                            return stateManager.store('displayed_categories', validatedValue).catch(error => {
-                                                console.log('Error storing displayed_categories:', error);
-                                            });
+                                        get: async () => getDisplayedCategoriesStr(stateManager),
+                                        set: async (newValue) => {
+                                            await stateManager.store('displayed_categories', newValue);
                                         }
                                     }),
                                     allowsMultiselect: true
                                 })
-                            ]);
+                            ];
                         },
                         isHidden: false
                     })
@@ -2233,18 +2185,12 @@ const resetSettings = (stateManager) => {
         id: 'reset',
         label: 'Reset Settings',
         onTap: async () => {
-            try {
-                await Promise.all([
-                    stateManager.store('extra_args', ''),
-                    stateManager.store('displayed_categories', eHentaiHelper_1.eHentaiCategoriesList.getValueList()),
-                    stateManager.store('base_host', 'e-hentai.org'),
-                    stateManager.store('ipb_member_id', null),
-                    stateManager.store('ipb_pass_hash', null)
-                ]);
-            }
-            catch (error) {
-                console.log('Error resetting settings:', error);
-            }
+            await Promise.all([
+                stateManager.store('extra_args', null),
+                stateManager.store('use_ex', null),
+                stateManager.store('ipb_member_id', null),
+                stateManager.store('ipb_pass_hash', null)
+            ]);
         }
     });
 };
