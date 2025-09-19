@@ -1,8 +1,8 @@
 {
   "name": "extensions-main",
-  "repositoryName": "nReus Extensions Testing (0.8)",
+  "repositoryName": "kameia Extensions (0.8)",
   "version": "0.8.0",
-  "description": "Attempting to use ExH",
+  "description": "Currently contains only e-hentai",
   "main": "index.js",
   "scripts": {
     "test" : "npx paperback test",
@@ -10,7 +10,7 @@
     "serve": "paperback serve",
     "logcat": "paperback logcat --ip=192.168.1.1"
   },
-  "author": "kameia, loik, nReus",
+  "author": "kameia, loik",
   "license": "MIT",
   "devDependencies": {
     "@types/cheerio": "0.22.21",

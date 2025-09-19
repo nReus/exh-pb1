@@ -11,18 +11,12 @@ import {
 } from './eHentaiParser'
 
 import {
-    getExtraArgs, getDisplayedCategories,
-    getUsername,
-    getPassword,
-    getUseExHentai,
-    getIgneous
+    getExtraArgs, getDisplayedCategories
 } from './eHentaiSettings'
 
-export async function getGalleryData(ids: string[], requestManager: RequestManager, stateManager: SourceStateManager): Promise<any> {
-    const apiUrl = await getApiUrl(stateManager)
-    
+export async function getGalleryData(ids: string[], requestManager: RequestManager): Promise<any> {
     const request = App.createRequest({
-        url: apiUrl,
+        url: 'https://api.e-hentai.org/api.php',
         method: 'POST',
         headers: {
             'content-type': 'application/json'
@@ -41,10 +35,9 @@ export async function getGalleryData(ids: string[], requestManager: RequestManag
 
 export async function getSearchData(query: string | undefined, page: number, categories: number, requestManager: RequestManager, cheerio: CheerioAPI, nextPageId: { id: number }, sourceStateManager: SourceStateManager): Promise<PartialSourceManga[]> {
     let finalQuery = (query ?? '') + ' ' + await getExtraArgs(sourceStateManager)
-    const baseUrl = await getBaseUrl(sourceStateManager)
 
     const request = App.createRequest({
-        url: `${baseUrl}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,
+        url: `https://e-hentai.org/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,
         method: 'GET'
     })
     const result = await requestManager.schedule(request, 1)
@@ -145,60 +138,3 @@ class eHentaiCategories {
 }
 
 export const eHentaiCategoriesList = new eHentaiCategories()
-
-export async function getBaseUrl(stateManager: SourceStateManager): Promise<string> {
-    const useExHentai = await getUseExHentai(stateManager)
-    return useExHentai ? 'https://exhentai.org' : 'https://e-hentai.org'
-}
-
-export async function getApiUrl(stateManager: SourceStateManager): Promise<string> {
-    const useExHentai = await getUseExHentai(stateManager)
-    return useExHentai ? 'https://exhentai.org/api.php' : 'https://api.e-hentai.org/api.php'
-}
-
-export async function performLogin(requestManager: RequestManager, stateManager: SourceStateManager): Promise<void> {
-    const username = await getUsername(stateManager)
-    const password = await getPassword(stateManager)
-    
-    if (!username || !password) {
-        throw new Error('Username and password are required for ExHentai access')
-    }
-
-    // Perform login to forums
-    const loginRequest = App.createRequest({
-        url: 'https://forums.e-hentai.org/index.php?act=Login&CODE=01',
-        method: 'POST',
-        headers: {
-            'content-type': 'application/x-www-form-urlencoded',
-            'referer': 'https://forums.e-hentai.org/index.php?act=Login&CODE=00'
-        },
-        data: `UserName=${encodeURIComponent(username)}&PassWord=${encodeURIComponent(password)}&CookieDate=1`
-    })
-    
-    const response = await requestManager.schedule(loginRequest, 1)
-    
-    // Check if login was successful by looking for redirect or success indicators
-    if (response.status !== 200) {
-        throw new Error('Login failed - check your credentials')
-    }
-}
-
-export async function getAuthenticatedCookies(stateManager: SourceStateManager): Promise<any[]> {
-    const useExHentai = await getUseExHentai(stateManager)
-    const domain = useExHentai ? 'exhentai.org' : 'e-hentai.org'
-    
-    const cookies = [App.createCookie({ name: 'nw', value: '1', domain: domain })]
-    
-    if (useExHentai) {
-        const igneous = await getIgneous(stateManager)
-        if (igneous) {
-            cookies.push(App.createCookie({ 
-                name: 'igneous', 
-                value: igneous, 
-                domain: 'exhentai.org' 
-            }))
-        }
-    }
-    
-    return cookies
-}

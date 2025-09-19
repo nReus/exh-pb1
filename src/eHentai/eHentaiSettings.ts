@@ -20,20 +20,16 @@ export async function getDisplayedCategoriesStr(stateManager: SourceStateManager
     return await stateManager.retrieve('displayed_categories') ?? eHentaiCategoriesList.getValueList()
 }
 
-export async function getUsername(stateManager: SourceStateManager): Promise<string> {
-    return (await stateManager.retrieve('username') as string) ?? ''
-}
-
-export async function getPassword(stateManager: SourceStateManager): Promise<string> {
-    return (await stateManager.retrieve('password') as string) ?? ''
-}
-
 export async function getUseExHentai(stateManager: SourceStateManager): Promise<boolean> {
     return (await stateManager.retrieve('use_exhentai') as boolean) ?? false
 }
 
-export async function getIgneous(stateManager: SourceStateManager): Promise<string> {
-    return (await stateManager.retrieve('igneous') as string) ?? ''
+export async function getIpbMemberId(stateManager: SourceStateManager): Promise<string> {
+    return (await stateManager.retrieve('ipb_member_id') as string) ?? ''
+}
+
+export async function getIpbPassHash(stateManager: SourceStateManager): Promise<string> {
+    return (await stateManager.retrieve('ipb_pass_hash') as string) ?? ''
 }
 
 export const settings = (stateManager: SourceStateManager): DUINavigationButton => {
@@ -44,11 +40,17 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
             sections: () => {
                 return Promise.resolve([
                     App.createDUISection({
-                        id: 'site',
-                        header: 'Site Configuration',
-                        footer: 'ExHentai requires forum login credentials. You can find your igneous cookie in browser dev tools after logging in.',
+                        id: 'general',
+                        header: 'General',
+                        footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
                         rows: async () => {
-                            return [
+                            await Promise.all([
+                                getExtraArgs(stateManager),
+                                getUseExHentai(stateManager),
+                                getIpbMemberId(stateManager),
+                                getIpbPassHash(stateManager)
+                            ])
+                            return await [
                                 App.createDUISwitch({
                                     id: 'use_exhentai',
                                     label: 'Use ExHentai',
@@ -60,48 +62,25 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                                     })
                                 }),
                                 App.createDUIInputField({
-                                    id: 'username',
-                                    label: 'Forum Username',
+                                    id: 'ipb_member_id',
+                                    label: 'IPB Member ID (for ExHentai)',
                                     value: App.createDUIBinding({
-                                        get: async () => getUsername(stateManager),
+                                        get: async () => getIpbMemberId(stateManager),
                                         set: async (newValue: string) => {
-                                            await stateManager.store('username', newValue)
-                                        }
-                                    })
-                                }),
-                                App.createDUISecureInputField({
-                                    id: 'password',
-                                    label: 'Forum Password',
-                                    value: App.createDUIBinding({
-                                        get: async () => getPassword(stateManager),
-                                        set: async (newValue: string) => {
-                                            await stateManager.store('password', newValue)
+                                            await stateManager.store('ipb_member_id', newValue)
                                         }
                                     })
                                 }),
                                 App.createDUIInputField({
-                                    id: 'igneous',
-                                    label: 'Igneous Cookie (Optional)',
+                                    id: 'ipb_pass_hash',
+                                    label: 'IPB Pass Hash (for ExHentai)',
                                     value: App.createDUIBinding({
-                                        get: async () => getIgneous(stateManager),
+                                        get: async () => getIpbPassHash(stateManager),
                                         set: async (newValue: string) => {
-                                            await stateManager.store('igneous', newValue)
+                                            await stateManager.store('ipb_pass_hash', newValue)
                                         }
                                     })
-                                })
-                            ]
-                        },
-                        isHidden: false
-                    }),
-                    App.createDUISection({
-                        id: 'general',
-                        header: 'General',
-                        footer: 'Affects \'Latest Galleries\' homepage section and search results.\nHidden categories will override their respective category option in search arguments.',
-                        rows: async () => {
-                            await Promise.all([
-                                getExtraArgs(stateManager)
-                            ])
-                            return await [
+                                }),
                                 App.createDUIInputField({
                                     id: 'extra_args',
                                     label: 'Additional filter arguments',
@@ -148,11 +127,9 @@ export const resetSettings = (stateManager: SourceStateManager): DUIButton => {
         onTap: async () => {
             await Promise.all([
                 stateManager.store('extra_args', null),
-                stateManager.store('displayed_categories', null),
-                stateManager.store('username', null),
-                stateManager.store('password', null),
                 stateManager.store('use_exhentai', null),
-                stateManager.store('igneous', null)
+                stateManager.store('ipb_member_id', null),
+                stateManager.store('ipb_pass_hash', null)
             ])
         }
     })
