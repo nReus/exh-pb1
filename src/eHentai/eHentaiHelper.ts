@@ -12,7 +12,7 @@ import {
 } from './eHentaiParser'
 
 import {
-    getExtraArgs, getDisplayedCategories, getUseEx
+    getExtraArgs, getDisplayedCategories, isExReady
 } from './eHentaiSettings'
 
 export async function getGalleryData(ids: string[], requestManager: RequestManager): Promise<any> {
@@ -36,8 +36,7 @@ export async function getGalleryData(ids: string[], requestManager: RequestManag
 
 export async function getSearchData(query: string | undefined, page: number, categories: number, requestManager: RequestManager, cheerio: CheerioAPI, nextPageId: { id: number }, sourceStateManager: SourceStateManager): Promise<PartialSourceManga[]> {
     let finalQuery = (query ?? '') + ' ' + await getExtraArgs(sourceStateManager)
-    const useEx = await getUseEx(sourceStateManager)
-    const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
+    const base = (await isExReady(sourceStateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org'
 
     const url = `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`
     const $ = await fetchWithExHandshake(cheerio, requestManager, url, sourceStateManager)

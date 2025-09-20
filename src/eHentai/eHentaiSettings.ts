@@ -37,6 +37,18 @@ export async function getDisplayedCategoriesStr(stateManager: SourceStateManager
     return await stateManager.retrieve('displayed_categories') ?? eHentaiCategoriesList.getValueList()
 }
 
+// Ex is considered ready only if toggle is on and IPB cookies look valid (not empty/0/1)
+export async function isExReady(stateManager: SourceStateManager): Promise<boolean> {
+    const useEx = await getUseEx(stateManager)
+    if (!useEx) return false
+    const memberId = (await getIPBMemberId(stateManager))?.trim()
+    const passHash = (await getIPBPassHash(stateManager))?.trim()
+    if (!memberId || !passHash) return false
+    if (memberId === '0' || memberId === '1') return false
+    if (passHash === '0' || passHash === '1') return false
+    return true
+}
+
 export const settings = (stateManager: SourceStateManager): DUINavigationButton => {
     return App.createDUINavigationButton({
         id: 'settings',
