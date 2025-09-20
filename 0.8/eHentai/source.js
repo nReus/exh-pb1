@@ -1446,8 +1446,8 @@ const getExportVersion = (EXTENSION_VERSION) => {
 };
 exports.getExportVersion = getExportVersion;
 exports.eHentaiInfo = {
-    version: (0, exports.getExportVersion)('0.0.15'),
-    name: 'e-hentai',
+    version: (0, exports.getExportVersion)('0.0.11'),
+    name: 'E-Hentai / ExHentai',
     icon: 'icon.png',
     author: 'kameia, loik, nReus',
     description: 'Extension to grab galleries from E-Hentai/ExHentai',
@@ -1470,6 +1470,7 @@ class eHentai {
                 interceptRequest: async (request) => {
                     const useEx = await (0, eHentaiSettings_1.getUseEx)(this.stateManager);
                     const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
+                    const host = useEx ? 'exhentai.org' : 'e-hentai.org';
                     const cookies = [];
                     // Always set UA and referer to selected base
                     request.headers = {
@@ -1479,16 +1480,14 @@ class eHentai {
                             'referer': `${base}/`
                         }
                     };
-                    // For gallery pages, NW cookie gives simplified viewer (ok to send for both)
-                    cookies.push(App.createCookie({ name: 'nw', value: '1', domain: `${base}/` }));
-                    // If ExHentai is enabled, attach IPB cookies
-                    if (useEx) {
-                        const memberId = await (0, eHentaiSettings_1.getIPBMemberId)(this.stateManager);
-                        const passHash = await (0, eHentaiSettings_1.getIPBPassHash)(this.stateManager);
-                        if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
-                            cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: `${base}/` }));
-                            cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: `${base}/` }));
-                        }
+                    // Simplified viewer cookie (applies to both hosts)
+                    cookies.push(App.createCookie({ name: 'nw', value: '1', domain: host }));
+                    // Attach IPB cookies whenever provided, even if Ex toggle is off
+                    const memberId = await (0, eHentaiSettings_1.getIPBMemberId)(this.stateManager);
+                    const passHash = await (0, eHentaiSettings_1.getIPBPassHash)(this.stateManager);
+                    if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
+                        cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: host }));
+                        cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: host }));
                     }
                     request.cookies = [...(request.cookies ?? []), ...cookies];
                     return request;
@@ -1591,35 +1590,16 @@ class eHentai {
             return chapters;
         }
         const maxPerPageStr = match[2];
-        const maxImagesStr = match[3];
         const maxPerPage = parseInt(maxPerPageStr.replace(/[ ,]/g, ''), 10);
-        const maxImages = parseInt(maxImagesStr.replace(/[ ,]/g, ''), 10);
-        let chaptersLoopNum = 1;
-        if (maxImages != maxPerPage) {
-            chaptersLoopNum = Math.ceil(maxImages / maxPerPage);
-        }
-        // Push entire gallery first, then split gallery
+        // Single full-gallery chapter only (no segmentation)
         chapters.push(App.createChapter({
             id: 'Full-' + data.filecount + '-' + maxPerPage,
-            name: 'Gallery (Warning - loading time grows with more pages)',
-            chapNum: chaptersLoopNum + 1,
+            name: 'Gallery',
+            chapNum: 1,
             time: new Date(parseInt(data.posted) * 1000),
             volume: 0,
-            sortingIndex: chaptersLoopNum
+            sortingIndex: 0
         }));
-        for (let i = 0; i < chaptersLoopNum; ++i) {
-            let startPage = ((i * maxPerPage) + 1);
-            let endPage = (i == chaptersLoopNum - 1 ? parseInt(data.filecount) : (i + 1) * maxPerPage);
-            const websitePageNum = i;
-            chapters.push(App.createChapter({
-                id: 'Pages-' + websitePageNum,
-                name: 'Page ' + startPage + ' - ' + endPage,
-                chapNum: i + 1,
-                time: new Date(parseInt(data.posted) * 1000),
-                volume: 0,
-                sortingIndex: i
-            }));
-        }
         return chapters;
     }
     async getChapterDetails(mangaId, chapterId) {
@@ -2166,7 +2146,7 @@ const settings = (stateManager) => {
                     App.createDUISection({
                         id: 'exhentai',
                         header: 'ExHentai',
-                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If Ex shows a blank page, clear cookies and login to the forums again before retrying.',
+                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If browsing shows up blank, double-check your cookies are correct.',
                         rows: async () => {
                             await Promise.all([
                                 getUseEx(stateManager),
