@@ -82,7 +82,7 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                     App.createDUISection({
                         id: 'exhentai',
                         header: 'ExHentai',
-                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If Ex shows a blank page, clear cookies and login to the forums again before retrying.',
+                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If browsing shows up blank, double-check your cookies are correct.',
                         rows: async () => {
                             await Promise.all([
                                 getUseEx(stateManager),

@@ -53,8 +53,8 @@ export const getExportVersion = (EXTENSION_VERSION: string): string => {
 }
 
 export const eHentaiInfo: SourceInfo = {
-    version: getExportVersion('0.0.15'),
-    name: 'e-hentai',
+    version: getExportVersion('0.0.11'),
+    name: 'E-Hentai / ExHentai',
     icon: 'icon.png',
     author: 'kameia, loik, nReus',
     description: 'Extension to grab galleries from E-Hentai/ExHentai',
@@ -83,6 +83,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
             interceptRequest: async (request: Request): Promise<Request> => {
                 const useEx = await getUseEx(this.stateManager)
                 const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
+                const host = useEx ? 'exhentai.org' : 'e-hentai.org'
                 const cookies = []
 
                 // Always set UA and referer to selected base
@@ -94,17 +95,15 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
                     }
                 }
 
-                // For gallery pages, NW cookie gives simplified viewer (ok to send for both)
-                cookies.push(App.createCookie({ name: 'nw', value: '1', domain: `${base}/` }))
+                // Simplified viewer cookie (applies to both hosts)
+                cookies.push(App.createCookie({ name: 'nw', value: '1', domain: host }))
 
-                // If ExHentai is enabled, attach IPB cookies
-                if (useEx) {
-                    const memberId = await getIPBMemberId(this.stateManager)
-                    const passHash = await getIPBPassHash(this.stateManager)
-                    if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
-                        cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: `${base}/` }))
-                        cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: `${base}/` }))
-                    }
+                // Attach IPB cookies whenever provided, even if Ex toggle is off
+                const memberId = await getIPBMemberId(this.stateManager)
+                const passHash = await getIPBPassHash(this.stateManager)
+                if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
+                    cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: host }))
+                    cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: host }))
                 }
 
                 request.cookies = [ ...(request.cookies ?? []), ...cookies ]
@@ -217,40 +216,18 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
             return chapters
         }
 
-        const maxPerPageStr = match[2] as string;
-        const maxImagesStr = match[3] as string;
+    const maxPerPageStr = match[2] as string;
+    const maxPerPage = parseInt(maxPerPageStr.replace(/[ ,]/g, ''), 10);
 
-        const maxPerPage = parseInt(maxPerPageStr.replace(/[ ,]/g, ''), 10);
-        const maxImages = parseInt(maxImagesStr.replace(/[ ,]/g, ''), 10);
-
-        let chaptersLoopNum: number = 1
-        if (maxImages != maxPerPage) {
-            chaptersLoopNum = Math.ceil(maxImages / maxPerPage)
-        }
-
-        // Push entire gallery first, then split gallery
+        // Single full-gallery chapter only (no segmentation)
         chapters.push(App.createChapter({
             id: 'Full-' + data.filecount + '-' + maxPerPage,
-            name: 'Gallery (Warning - loading time grows with more pages)',
-            chapNum: chaptersLoopNum + 1,
+            name: 'Gallery',
+            chapNum: 1,
             time: new Date(parseInt(data.posted) * 1000),
             volume: 0,
-            sortingIndex: chaptersLoopNum
+            sortingIndex: 0
         }))
-
-        for (let i: number = 0; i < chaptersLoopNum; ++i) {
-            let startPage: number = ((i * maxPerPage) + 1)
-            let endPage: number = (i == chaptersLoopNum - 1 ? parseInt(data.filecount) : (i + 1) * maxPerPage)
-            const websitePageNum: number = i
-            chapters.push(App.createChapter({
-                id: 'Pages-' + websitePageNum,
-                name: 'Page ' + startPage + ' - ' + endPage,
-                chapNum: i + 1,
-                time: new Date(parseInt(data.posted) * 1000),
-                volume: 0,
-                sortingIndex: i
-            }))
-        }
 
         return chapters
     }
