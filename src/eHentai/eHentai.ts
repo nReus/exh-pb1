@@ -54,7 +54,7 @@ export const getExportVersion = (EXTENSION_VERSION: string): string => {
 }
 
 export const eHentaiInfo: SourceInfo = {
-    version: getExportVersion('0.0.13'),
+    version: getExportVersion('0.0.14'),
     name: 'E-Hentai / ExHentai',
     icon: 'icon.png',
     author: 'kameia, loik, nReus',
