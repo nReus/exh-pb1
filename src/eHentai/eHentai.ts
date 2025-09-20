@@ -53,11 +53,11 @@ export const getExportVersion = (EXTENSION_VERSION: string): string => {
 }
 
 export const eHentaiInfo: SourceInfo = {
-    version: getExportVersion('0.0.12'),
-    name: 'e-hentai',
+    version: getExportVersion('0.0.13'),
+    name: 'E-Hentai / ExHentai',
     icon: 'icon.png',
     author: 'kameia, loik, nReus',
-    description: 'Extension to grab galleries from E-Hentai/ExHentai',
+    description: 'Based on kameia\'s extension. Set up with ipb_member_id and ipb_pass_hash immediately after adding and before browsing.',
     contentRating: ContentRating.ADULT,
     websiteBaseURL: 'https://e-hentai.org',
     authorWebsite: 'https://github.com/kameiaa',

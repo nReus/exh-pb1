@@ -28,6 +28,20 @@
 				"$eslint-stylish"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Bundle extension",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"bundle"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
 		}
 	]
 }

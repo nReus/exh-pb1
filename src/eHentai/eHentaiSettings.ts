@@ -40,61 +40,23 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
         form: App.createDUIForm({
             sections: () => {
                 return Promise.resolve([
+                    // Filters section
                     App.createDUISection({
-                        id: 'general',
-                        header: 'General',
-                        footer: 'Affects Latest Galleries and search. Enable ExHentai and provide ipb_member_id + ipb_pass_hash to access Ex.',
+                        id: 'filters',
+                        header: 'Filters',
+                        footer: 'Affects Latest Galleries and Search. Use additional arguments to refine results. Displayed Categories control which categories are shown.',
                         rows: async () => {
                             await Promise.all([
-                                getExtraArgs(stateManager),
-                                getUseEx(stateManager),
-                                getIPBMemberId(stateManager),
-                                getIPBPassHash(stateManager)
+                                getExtraArgs(stateManager)
                             ])
                             return await [
-                                // Toggle ExHentai
-                                App.createDUISwitch({
-                                    id: 'use_ex',
-                                    label: 'Use ExHentai',
-                                    value: App.createDUIBinding({
-                                        get: async () => getUseEx(stateManager),
-                                        set: async (newValue: boolean) => {
-                                            await stateManager.store('use_ex', newValue)
-                                        }
-                                    })
-                                }),
-                                // Cookie inputs for ExHentai
-                                App.createDUIInputField({
-                                    id: 'ipb_member_id',
-                                    label: 'ipb_member_id (ExHentai)',
-                                    value: App.createDUIBinding({
-                                        get: async () => getIPBMemberId(stateManager),
-                                        set: async (newValue: string) => {
-                                            await stateManager.store('ipb_member_id', newValue?.trim() ?? '')
-                                        }
-                                    })
-                                }),
-                                App.createDUIInputField({
-                                    id: 'ipb_pass_hash',
-                                    label: 'ipb_pass_hash (ExHentai)',
-                                    value: App.createDUIBinding({
-                                        get: async () => getIPBPassHash(stateManager),
-                                        set: async (newValue: string) => {
-                                            await stateManager.store('ipb_pass_hash', newValue?.trim() ?? '')
-                                        }
-                                    })
-                                }),
-                                // Existing controls
                                 App.createDUIInputField({
                                     id: 'extra_args',
                                     label: 'Additional filter arguments',
                                     value: App.createDUIBinding({
                                         get: async () => getExtraArgs(stateManager),
                                         set: async (newValue: string) => {
-                                            await stateManager.store(
-                                                'extra_args',
-                                                newValue
-                                            )
+                                            await stateManager.store('extra_args', newValue)
                                         }
                                     })
                                 }),
@@ -106,13 +68,57 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                                     value: App.createDUIBinding({
                                         get: async () => getDisplayedCategoriesStr(stateManager),
                                         set: async (newValue) => {
-                                            await stateManager.store(
-                                                'displayed_categories',
-                                                newValue
-                                            )
+                                            await stateManager.store('displayed_categories', newValue)
                                         }
                                     }),
                                     allowsMultiselect: true
+                                })
+                            ]
+                        },
+                        isHidden: false
+                    }),
+
+                    // ExHentai section
+                    App.createDUISection({
+                        id: 'exhentai',
+                        header: 'ExHentai',
+                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If Ex shows a blank page, clear cookies and login to the forums again before retrying.',
+                        rows: async () => {
+                            await Promise.all([
+                                getUseEx(stateManager),
+                                getIPBMemberId(stateManager),
+                                getIPBPassHash(stateManager)
+                            ])
+                            return await [
+                                App.createDUISwitch({
+                                    id: 'use_ex',
+                                    label: 'Use ExHentai',
+                                    value: App.createDUIBinding({
+                                        get: async () => getUseEx(stateManager),
+                                        set: async (newValue: boolean) => {
+                                            await stateManager.store('use_ex', newValue)
+                                        }
+                                    })
+                                }),
+                                App.createDUIInputField({
+                                    id: 'ipb_member_id',
+                                    label: 'ipb_member_id (forum cookie)',
+                                    value: App.createDUIBinding({
+                                        get: async () => getIPBMemberId(stateManager),
+                                        set: async (newValue: string) => {
+                                            await stateManager.store('ipb_member_id', newValue?.trim() ?? '')
+                                        }
+                                    })
+                                }),
+                                App.createDUIInputField({
+                                    id: 'ipb_pass_hash',
+                                    label: 'ipb_pass_hash (forum cookie)',
+                                    value: App.createDUIBinding({
+                                        get: async () => getIPBPassHash(stateManager),
+                                        set: async (newValue: string) => {
+                                            await stateManager.store('ipb_pass_hash', newValue?.trim() ?? '')
+                                        }
+                                    })
                                 })
                             ]
                         },
