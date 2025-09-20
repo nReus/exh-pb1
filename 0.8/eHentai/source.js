@@ -1468,7 +1468,7 @@ class eHentai {
             requestTimeout: 15000,
             interceptor: {
                 interceptRequest: async (request) => {
-                    const useEx = await (0, eHentaiSettings_1.getUseEx)(this.stateManager);
+                    const useEx = await (0, eHentaiSettings_1.isExReady)(this.stateManager);
                     const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
                     const host = useEx ? 'exhentai.org' : 'e-hentai.org';
                     const cookies = [];
@@ -1495,13 +1495,19 @@ class eHentai {
                             cookies.push(App.createCookie({ name: 'igneous', value: igneous, domain: host }));
                         }
                     }
-                    request.cookies = [...(request.cookies ?? []), ...cookies];
+                    // De-dupe cookies by name (last one wins)
+                    const merged = [...(request.cookies ?? []), ...cookies];
+                    const seen = new Map();
+                    for (const ck of merged) {
+                        seen.set(ck.name, ck);
+                    }
+                    request.cookies = Array.from(seen.values());
                     return request;
                 },
                 interceptResponse: async (response) => {
                     // Capture igneous from Set-Cookie if the server hands it to us
                     try {
-                        const useEx = await (0, eHentaiSettings_1.getUseEx)(this.stateManager);
+                        const useEx = await (0, eHentaiSettings_1.isExReady)(this.stateManager);
                         if (useEx) {
                             const hdrs = response?.headers;
                             const setCookie = hdrs?.['set-cookie'];
@@ -1532,7 +1538,7 @@ class eHentai {
         this.stateManager = App.createSourceStateManager();
     }
     async getBaseUrl() {
-        return (await (0, eHentaiSettings_1.getUseEx)(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org';
+        return (await (0, eHentaiSettings_1.isExReady)(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org';
     }
     getMangaShareUrl(mangaId) {
         // Share URL kept on e-hentai.org to avoid async here
@@ -1613,7 +1619,8 @@ class eHentai {
         // Load page to get how much images there are per page
         const base = await this.getBaseUrl();
         let $;
-        $ = await (0, eHentaiParser_1.getCheerioStatic)(this.cheerio, this.requestManager, `${base}/g/${mangaId}`);
+        // Use handshake-aware fetch for ExHentai to acquire igneous if needed
+        $ = await (0, eHentaiParser_1.fetchWithExHandshake)(this.cheerio, this.requestManager, `${base}/g/${mangaId}`, this.stateManager);
         const showing_text = $('p.gpc').text();
         const regexParse = /(\d[\d, ]*) - (\d[\d, ]*) of (\d[\d, ]*)/;
         const match = showing_text.match(regexParse);
@@ -1769,8 +1776,7 @@ async function getGalleryData(ids, requestManager) {
 exports.getGalleryData = getGalleryData;
 async function getSearchData(query, page, categories, requestManager, cheerio, nextPageId, sourceStateManager) {
     let finalQuery = (query ?? '') + ' ' + await (0, eHentaiSettings_1.getExtraArgs)(sourceStateManager);
-    const useEx = await (0, eHentaiSettings_1.getUseEx)(sourceStateManager);
-    const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
+    const base = (await (0, eHentaiSettings_1.isExReady)(sourceStateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org';
     const url = `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`;
     const $ = await (0, eHentaiParser_1.fetchWithExHandshake)(cheerio, requestManager, url, sourceStateManager);
     let urlInfo = (0, eHentaiParser_1.parseUrlParams)($('#unext').attr('href') ?? '');
@@ -2027,8 +2033,7 @@ exports.fetchWithExHandshake = fetchWithExHandshake;
 async function parseHomeSections(cheerio, requestManager, sections, sectionCallback, sourceStateManager) {
     for (const section of sections) {
         let $ = undefined;
-        const useEx = await (0, eHentaiSettings_1.getUseEx)(sourceStateManager);
-        const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org';
+        const base = (await (0, eHentaiSettings_1.isExReady)(sourceStateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org';
         if (section.id == 'popular_recently') {
             $ = await fetchWithExHandshake(cheerio, requestManager, `${base}/popular`, sourceStateManager);
             if ($ != null) {
@@ -2141,7 +2146,7 @@ exports.parseUrlParams = parseUrlParams;
 },{"./eHentaiHelper":71,"./eHentaiSettings":73,"entities":69}],73:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetSettings = exports.settings = exports.getDisplayedCategoriesStr = exports.getDisplayedCategories = exports.getExtraArgs = exports.getIgneous = exports.getIPBPassHash = exports.getIPBMemberId = exports.getUseEx = void 0;
+exports.resetSettings = exports.settings = exports.isExReady = exports.getDisplayedCategoriesStr = exports.getDisplayedCategories = exports.getExtraArgs = exports.getIgneous = exports.getIPBPassHash = exports.getIPBMemberId = exports.getUseEx = void 0;
 const eHentaiHelper_1 = require("./eHentaiHelper");
 // New helpers for ExHentai settings
 async function getUseEx(stateManager) {
@@ -2172,6 +2177,22 @@ async function getDisplayedCategoriesStr(stateManager) {
     return await stateManager.retrieve('displayed_categories') ?? eHentaiHelper_1.eHentaiCategoriesList.getValueList();
 }
 exports.getDisplayedCategoriesStr = getDisplayedCategoriesStr;
+// Ex is considered ready only if toggle is on and IPB cookies look valid (not empty/0/1)
+async function isExReady(stateManager) {
+    const useEx = await getUseEx(stateManager);
+    if (!useEx)
+        return false;
+    const memberId = (await getIPBMemberId(stateManager))?.trim();
+    const passHash = (await getIPBPassHash(stateManager))?.trim();
+    if (!memberId || !passHash)
+        return false;
+    if (memberId === '0' || memberId === '1')
+        return false;
+    if (passHash === '0' || passHash === '1')
+        return false;
+    return true;
+}
+exports.isExReady = isExReady;
 const settings = (stateManager) => {
     return App.createDUINavigationButton({
         id: 'settings',
