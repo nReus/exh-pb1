@@ -135,6 +135,40 @@ export const parseTitle = (title: string): string => {
     return title.replaceAll(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
 }
 
+export async function getCheerioStatic(cheerio: CheerioAPI, requestManager: RequestManager, urlParam: string): Promise<CheerioStatic> {
+    const request = App.createRequest({
+        url: urlParam,
+        method: 'GET'
+    })
+
+    const response = await requestManager.schedule(request, 1)
+    return cheerio.load(response.data as string)
+}
+
+// Perform a one-time ExH handshake: if the first fetch looks blank, hit the homepage to obtain igneous, then retry once.
+export async function fetchWithExHandshake(cheerio: CheerioAPI, requestManager: RequestManager, url: string, sourceStateManager: SourceStateManager): Promise<CheerioStatic> {
+    const useEx = await getUseEx(sourceStateManager)
+    if (!useEx) {
+        return getCheerioStatic(cheerio, requestManager, url)
+    }
+
+    // 1st try
+    let $ = await getCheerioStatic(cheerio, requestManager, url)
+    const looksBlank = $('table.itg.gltc').length === 0 && $('div.ido').length === 0 && ($('body').text().trim().length === 0)
+    if (!looksBlank) return $
+
+    // Handshake: ping Ex homepage to let server set igneous, then retry once
+    const base = 'https://exhentai.org'
+    try {
+        await getCheerioStatic(cheerio, requestManager, `${base}/`)
+    } catch { /* ignore */ }
+
+    // Small delay and retry
+    await new Promise(res => setTimeout(res, 250))
+    $ = await getCheerioStatic(cheerio, requestManager, url)
+    return $
+}
+
 export async function parseHomeSections(cheerio: CheerioAPI, requestManager: RequestManager, sections: HomeSection[], sectionCallback: (section: HomeSection) => void, sourceStateManager: SourceStateManager): Promise<void> {
     for (const section of sections) {
         let $: CheerioStatic | undefined = undefined
@@ -142,7 +176,7 @@ export async function parseHomeSections(cheerio: CheerioAPI, requestManager: Req
         const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
 
         if (section.id == 'popular_recently') {
-            $ = await getCheerioStatic(cheerio, requestManager, `${base}/popular`)
+            $ = await fetchWithExHandshake(cheerio, requestManager, `${base}/popular`, sourceStateManager)
             if ($ != null) {
                 section.items = parseMenuListPage($, true)
             }
@@ -151,7 +185,7 @@ export async function parseHomeSections(cheerio: CheerioAPI, requestManager: Req
         if (section.id == 'latest_galleries') {
             const displayedCategories: number[] = await getDisplayedCategories(sourceStateManager)
             const excludedCategories: number = displayedCategories.reduce((prev, cur) => prev - cur, 1023)
-            $ = await getCheerioStatic(cheerio, requestManager, `${base}/?f_cats=${excludedCategories}&f_search=${encodeURIComponent(await getExtraArgs(sourceStateManager))}`)
+            $ = await fetchWithExHandshake(cheerio, requestManager, `${base}/?f_cats=${excludedCategories}&f_search=${encodeURIComponent(await getExtraArgs(sourceStateManager))}`, sourceStateManager)
             if ($ != null) {
                 section.items = parseMenuListPage($)
             }
@@ -204,16 +238,6 @@ export function parseMenuListPage($: CheerioStatic, ignoreExpectedEntryAmount: b
         }))
     }
     return ret
-}
-
-export async function getCheerioStatic(cheerio: CheerioAPI, requestManager: RequestManager, urlParam: string): Promise<CheerioStatic> {
-    const request = App.createRequest({
-        url: urlParam,
-        method: 'GET'
-    })
-
-    const response = await requestManager.schedule(request, 1)
-    return cheerio.load(response.data as string)
 }
 
 export interface UrlInfo {

@@ -7,7 +7,8 @@ import {
 import {
     parseMenuListPage,
     parseUrlParams,
-    UrlInfo
+    UrlInfo,
+    fetchWithExHandshake
 } from './eHentaiParser'
 
 import {
@@ -38,12 +39,8 @@ export async function getSearchData(query: string | undefined, page: number, cat
     const useEx = await getUseEx(sourceStateManager)
     const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
 
-    const request = App.createRequest({
-        url: `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,
-        method: 'GET'
-    })
-    const result = await requestManager.schedule(request, 1)
-    const $ = cheerio.load(result.data as string)
+    const url = `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`
+    const $ = await fetchWithExHandshake(cheerio, requestManager, url, sourceStateManager)
 
     let urlInfo: UrlInfo = parseUrlParams($('#unext').attr('href') ?? '')
     nextPageId.id = urlInfo.id

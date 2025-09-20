@@ -21,6 +21,10 @@ export async function getIPBPassHash(stateManager: SourceStateManager): Promise<
     return (await stateManager.retrieve('ipb_pass_hash') as string) ?? ''
 }
 
+export async function getIgneous(stateManager: SourceStateManager): Promise<string> {
+    return (await stateManager.retrieve('igneous') as string) ?? ''
+}
+
 export async function getExtraArgs(stateManager: SourceStateManager): Promise<string> {
     return (await stateManager.retrieve('extra_args') as string) ?? ''
 }
@@ -82,12 +86,13 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                     App.createDUISection({
                         id: 'exhentai',
                         header: 'ExHentai',
-                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If Ex shows a blank page, clear cookies and login to the forums again before retrying.',
+                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If Ex shows a blank page, this extension will attempt a handshake to obtain igneous automatically. You can also paste igneous manually if needed.',
                         rows: async () => {
                             await Promise.all([
                                 getUseEx(stateManager),
                                 getIPBMemberId(stateManager),
-                                getIPBPassHash(stateManager)
+                                getIPBPassHash(stateManager),
+                                getIgneous(stateManager)
                             ])
                             return await [
                                 App.createDUISwitch({
@@ -119,6 +124,16 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                                             await stateManager.store('ipb_pass_hash', newValue?.trim() ?? '')
                                         }
                                     })
+                                }),
+                                App.createDUIInputField({
+                                    id: 'igneous',
+                                    label: 'igneous (optional, ExHentai cookie)',
+                                    value: App.createDUIBinding({
+                                        get: async () => getIgneous(stateManager),
+                                        set: async (newValue: string) => {
+                                            await stateManager.store('igneous', newValue?.trim() ?? '')
+                                        }
+                                    })
                                 })
                             ]
                         },
@@ -139,7 +154,8 @@ export const resetSettings = (stateManager: SourceStateManager): DUIButton => {
                 stateManager.store('extra_args', null),
                 stateManager.store('use_ex', null),
                 stateManager.store('ipb_member_id', null),
-                stateManager.store('ipb_pass_hash', null)
+                stateManager.store('ipb_pass_hash', null),
+                stateManager.store('igneous', null)
             ])
         }
     })

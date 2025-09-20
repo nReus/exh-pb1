@@ -44,7 +44,8 @@ import {
     resetSettings,
     getUseEx,
     getIPBMemberId,
-    getIPBPassHash
+    getIPBPassHash,
+    getIgneous
 } from './eHentaiSettings'
 
 const PAPERBACK_VERSION = '0.8.0'
@@ -98,13 +99,17 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
                 // Simplified viewer cookie
                 cookies.push(App.createCookie({ name: 'nw', value: '1', domain: host }))
 
-                // If ExHentai is enabled, attach IPB cookies
+                // If ExHentai is enabled, attach IPB and igneous cookies
                 if (useEx) {
                     const memberId = await getIPBMemberId(this.stateManager)
                     const passHash = await getIPBPassHash(this.stateManager)
+                    const igneous = await getIgneous(this.stateManager)
                     if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
                         cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: host }))
                         cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: host }))
+                    }
+                    if ((igneous?.length ?? 0) > 0) {
+                        cookies.push(App.createCookie({ name: 'igneous', value: igneous, domain: host }))
                     }
                 }
 
@@ -113,6 +118,31 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
             },
 
             interceptResponse: async (response: Response): Promise<Response> => {
+                // Capture igneous from Set-Cookie if the server hands it to us
+                try {
+                    const useEx = await getUseEx(this.stateManager)
+                    if (useEx) {
+                        const hdrs = (response as any)?.headers
+                        const setCookie = hdrs?.['set-cookie']
+                        const list: string[] = Array.isArray(setCookie) ? setCookie : (typeof setCookie === 'string' ? [setCookie] : [])
+                        for (const c of list) {
+                            const m = /(?:^|;)\s*igneous=([^;]+)/i.exec(c)
+                            const val = m?.[1]
+                            if (val && val.toLowerCase() !== 'deleted') {
+                                await this.stateManager.store('igneous', val)
+                                break
+                            }
+                        }
+                        // Some runtimes also expose cookies as parsed objects
+                        const respCookies: any[] = (response as any)?.cookies ?? []
+                        for (const ck of respCookies) {
+                            if (ck?.name === 'igneous' && ck?.value && ck.value.toLowerCase() !== 'deleted') {
+                                await this.stateManager.store('igneous', ck.value)
+                                break
+                            }
+                        }
+                    }
+                } catch { /* ignore */ }
                 return response
             }
         }
