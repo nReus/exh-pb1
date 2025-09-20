@@ -29,23 +29,22 @@ import {
 } from './eHentaiHelper'
 
 import {
+    getCheerioStatic,
     parseArtist,
     parseHomeSections,
     parseLanguage,
     parsePages,
     parseTags,
-    parseTitle,
-    fetchWithExHandshake
+    parseTitle
 } from './eHentaiParser'
 
 import {
     getDisplayedCategories,
     settings,
     resetSettings,
+    getUseEx,
     getIPBMemberId,
-    getIPBPassHash,
-    getIgneous,
-    isExReady
+    getIPBPassHash
 } from './eHentaiSettings'
 
 const PAPERBACK_VERSION = '0.8.0'
@@ -54,11 +53,11 @@ export const getExportVersion = (EXTENSION_VERSION: string): string => {
 }
 
 export const eHentaiInfo: SourceInfo = {
-    version: getExportVersion('0.0.14'),
-    name: 'E-Hentai / ExHentai',
+    version: getExportVersion('0.0.11'),
+    name: 'e-hentai',
     icon: 'icon.png',
     author: 'kameia, loik, nReus',
-    description: 'Based on kameia\'s extension. Set up with ipb_member_id and ipb_pass_hash immediately after adding and before browsing.',
+    description: 'Extension to grab galleries from E-Hentai/ExHentai',
     contentRating: ContentRating.ADULT,
     websiteBaseURL: 'https://e-hentai.org',
     authorWebsite: 'https://github.com/kameiaa',
@@ -74,7 +73,7 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
     constructor(public cheerio: CheerioAPI) { }
 
     private async getBaseUrl(): Promise<string> {
-        return (await isExReady(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org'
+        return (await getUseEx(this.stateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org'
     }
 
     readonly requestManager: RequestManager = App.createRequestManager({
@@ -82,9 +81,8 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
         requestTimeout: 15000,
         interceptor: {
             interceptRequest: async (request: Request): Promise<Request> => {
-                const useEx = await isExReady(this.stateManager)
+                const useEx = await getUseEx(this.stateManager)
                 const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
-                const host = useEx ? 'exhentai.org' : 'e-hentai.org'
                 const cookies = []
 
                 // Always set UA and referer to selected base
@@ -96,59 +94,24 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
                     }
                 }
 
-                // Simplified viewer cookie
-                cookies.push(App.createCookie({ name: 'nw', value: '1', domain: host }))
+                // For gallery pages, NW cookie gives simplified viewer (ok to send for both)
+                cookies.push(App.createCookie({ name: 'nw', value: '1', domain: `${base}/` }))
 
-                // If ExHentai is enabled, attach IPB and igneous cookies
+                // If ExHentai is enabled, attach IPB cookies
                 if (useEx) {
                     const memberId = await getIPBMemberId(this.stateManager)
                     const passHash = await getIPBPassHash(this.stateManager)
-                    const igneous = await getIgneous(this.stateManager)
                     if ((memberId?.length ?? 0) > 0 && (passHash?.length ?? 0) > 0) {
-                        cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: host }))
-                        cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: host }))
-                    }
-                    if ((igneous?.length ?? 0) > 0) {
-                        cookies.push(App.createCookie({ name: 'igneous', value: igneous, domain: host }))
+                        cookies.push(App.createCookie({ name: 'ipb_member_id', value: memberId, domain: `${base}/` }))
+                        cookies.push(App.createCookie({ name: 'ipb_pass_hash', value: passHash, domain: `${base}/` }))
                     }
                 }
 
-                // De-dupe cookies by name (last one wins)
-                const merged = [ ...(request.cookies ?? []), ...cookies ]
-                const seen = new Map<string, any>()
-                for (const ck of merged) {
-                    seen.set(ck.name, ck)
-                }
-                request.cookies = Array.from(seen.values())
+                request.cookies = [ ...(request.cookies ?? []), ...cookies ]
                 return request
             },
 
             interceptResponse: async (response: Response): Promise<Response> => {
-                // Capture igneous from Set-Cookie if the server hands it to us
-                try {
-                    const useEx = await isExReady(this.stateManager)
-                    if (useEx) {
-                        const hdrs = (response as any)?.headers
-                        const setCookie = hdrs?.['set-cookie']
-                        const list: string[] = Array.isArray(setCookie) ? setCookie : (typeof setCookie === 'string' ? [setCookie] : [])
-                        for (const c of list) {
-                            const m = /(?:^|;)\s*igneous=([^;]+)/i.exec(c)
-                            const val = m?.[1]
-                            if (val && val.toLowerCase() !== 'deleted') {
-                                await this.stateManager.store('igneous', val)
-                                break
-                            }
-                        }
-                        // Some runtimes also expose cookies as parsed objects
-                        const respCookies: any[] = (response as any)?.cookies ?? []
-                        for (const ck of respCookies) {
-                            if (ck?.name === 'igneous' && ck?.value && ck.value.toLowerCase() !== 'deleted') {
-                                await this.stateManager.store('igneous', ck.value)
-                                break
-                            }
-                        }
-                    }
-                } catch { /* ignore */ }
                 return response
             }
         }
@@ -244,9 +207,8 @@ export class eHentai implements SearchResultsProviding, MangaProviding, ChapterP
 
         // Load page to get how much images there are per page
         const base = await this.getBaseUrl()
-    let $: CheerioStatic
-    // Use handshake-aware fetch for ExHentai to acquire igneous if needed
-    $ = await fetchWithExHandshake(this.cheerio, this.requestManager, `${base}/g/${mangaId}`, this.stateManager)
+        let $: CheerioStatic
+        $ = await getCheerioStatic(this.cheerio, this.requestManager, `${base}/g/${mangaId}`)
         const showing_text = $('p.gpc').text();
         const regexParse = /(\d[\d, ]*) - (\d[\d, ]*) of (\d[\d, ]*)/;
         const match = showing_text.match(regexParse);

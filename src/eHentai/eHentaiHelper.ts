@@ -7,12 +7,11 @@ import {
 import {
     parseMenuListPage,
     parseUrlParams,
-    UrlInfo,
-    fetchWithExHandshake
+    UrlInfo
 } from './eHentaiParser'
 
 import {
-    getExtraArgs, getDisplayedCategories, isExReady
+    getExtraArgs, getDisplayedCategories, getUseEx
 } from './eHentaiSettings'
 
 export async function getGalleryData(ids: string[], requestManager: RequestManager): Promise<any> {
@@ -36,10 +35,15 @@ export async function getGalleryData(ids: string[], requestManager: RequestManag
 
 export async function getSearchData(query: string | undefined, page: number, categories: number, requestManager: RequestManager, cheerio: CheerioAPI, nextPageId: { id: number }, sourceStateManager: SourceStateManager): Promise<PartialSourceManga[]> {
     let finalQuery = (query ?? '') + ' ' + await getExtraArgs(sourceStateManager)
-    const base = (await isExReady(sourceStateManager)) ? 'https://exhentai.org' : 'https://e-hentai.org'
+    const useEx = await getUseEx(sourceStateManager)
+    const base = useEx ? 'https://exhentai.org' : 'https://e-hentai.org'
 
-    const url = `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`
-    const $ = await fetchWithExHandshake(cheerio, requestManager, url, sourceStateManager)
+    const request = App.createRequest({
+        url: `${base}/?next=${page}&f_cats=${categories}&f_search=${encodeURIComponent(finalQuery)}`,
+        method: 'GET'
+    })
+    const result = await requestManager.schedule(request, 1)
+    const $ = cheerio.load(result.data as string)
 
     let urlInfo: UrlInfo = parseUrlParams($('#unext').attr('href') ?? '')
     nextPageId.id = urlInfo.id

@@ -21,10 +21,6 @@ export async function getIPBPassHash(stateManager: SourceStateManager): Promise<
     return (await stateManager.retrieve('ipb_pass_hash') as string) ?? ''
 }
 
-export async function getIgneous(stateManager: SourceStateManager): Promise<string> {
-    return (await stateManager.retrieve('igneous') as string) ?? ''
-}
-
 export async function getExtraArgs(stateManager: SourceStateManager): Promise<string> {
     return (await stateManager.retrieve('extra_args') as string) ?? ''
 }
@@ -35,18 +31,6 @@ export async function getDisplayedCategories(stateManager: SourceStateManager): 
 
 export async function getDisplayedCategoriesStr(stateManager: SourceStateManager): Promise<string[]> {
     return await stateManager.retrieve('displayed_categories') ?? eHentaiCategoriesList.getValueList()
-}
-
-// Ex is considered ready only if toggle is on and IPB cookies look valid (not empty/0/1)
-export async function isExReady(stateManager: SourceStateManager): Promise<boolean> {
-    const useEx = await getUseEx(stateManager)
-    if (!useEx) return false
-    const memberId = (await getIPBMemberId(stateManager))?.trim()
-    const passHash = (await getIPBPassHash(stateManager))?.trim()
-    if (!memberId || !passHash) return false
-    if (memberId === '0' || memberId === '1') return false
-    if (passHash === '0' || passHash === '1') return false
-    return true
 }
 
 export const settings = (stateManager: SourceStateManager): DUINavigationButton => {
@@ -98,13 +82,12 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                     App.createDUISection({
                         id: 'exhentai',
                         header: 'ExHentai',
-                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If Ex shows a blank page, this extension will attempt a handshake to obtain igneous automatically. You can also paste igneous manually if needed.',
+                        footer: 'Enable ExHentai and provide ipb_member_id + ipb_pass_hash from your E-Hentai forum cookies. If Ex shows a blank page, clear cookies and login to the forums again before retrying.',
                         rows: async () => {
                             await Promise.all([
                                 getUseEx(stateManager),
                                 getIPBMemberId(stateManager),
-                                getIPBPassHash(stateManager),
-                                getIgneous(stateManager)
+                                getIPBPassHash(stateManager)
                             ])
                             return await [
                                 App.createDUISwitch({
@@ -136,16 +119,6 @@ export const settings = (stateManager: SourceStateManager): DUINavigationButton 
                                             await stateManager.store('ipb_pass_hash', newValue?.trim() ?? '')
                                         }
                                     })
-                                }),
-                                App.createDUIInputField({
-                                    id: 'igneous',
-                                    label: 'igneous (optional, ExHentai cookie)',
-                                    value: App.createDUIBinding({
-                                        get: async () => getIgneous(stateManager),
-                                        set: async (newValue: string) => {
-                                            await stateManager.store('igneous', newValue?.trim() ?? '')
-                                        }
-                                    })
                                 })
                             ]
                         },
@@ -166,8 +139,7 @@ export const resetSettings = (stateManager: SourceStateManager): DUIButton => {
                 stateManager.store('extra_args', null),
                 stateManager.store('use_ex', null),
                 stateManager.store('ipb_member_id', null),
-                stateManager.store('ipb_pass_hash', null),
-                stateManager.store('igneous', null)
+                stateManager.store('ipb_pass_hash', null)
             ])
         }
     })
